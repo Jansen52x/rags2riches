@@ -1,0 +1,30 @@
+services:
+  postgres:
+    image: postgres
+    container_name: pg-fact-checker
+    environment:
+      POSTGRES_USER: fact-checker
+      POSTGRES_PASSWORD: fact-checker
+      POSTGRES_DB: claim_verifications
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  db_init:
+    image: python:3.12-slim
+    depends_on:
+      - postgres
+    volumes:
+      - ./init_db.py:/init_db.py
+    environment:
+      POSTGRES_USER: fact-checker
+      POSTGRES_PASSWORD: fact-checker
+      POSTGRES_DB: claim_verifications
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+    command: ["python", "/init_db.py"]
+
+volumes:
+  pg_data:
