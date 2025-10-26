@@ -9,7 +9,10 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - pg_data:/var/lib/postgresql/data
+      # For Postgres 18+, mount at /var/lib/postgresql so the container can
+      # manage versioned data directories internally. This avoids the
+      # pg_ctlcluster layout warning.
+      - pg_data:/var/lib/postgresql
     restart: unless-stopped
 
   db_init:
@@ -24,7 +27,13 @@ services:
       POSTGRES_DB: claim_verifications
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
-    command: ["python", "/init_db.py"]
+    # Install required client lib and run the init script
+    command:
+      [
+        "sh",
+        "-c",
+        "pip install --no-cache-dir 'psycopg[binary]' && python /init_db.py",
+      ]
 
 volumes:
   pg_data:

@@ -6,21 +6,26 @@ from typing_extensions import TypedDict, List, Optional, Dict
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from langgraph.graph import START, StateGraph, END
-from langgraph.types import Command, Parallel
-from langgraph.constants import Send
+from langgraph.types import Command, Send
 import json
 import wikipedia
 import wikipediaapi
 from newsapi import NewsApiClient
 from dotenv import load_dotenv
 import os
-from ddgs import DDGS
-import newspaper
+import sys
+from duckduckgo_search import DDGS
+from newspaper import Article
 import uuid
 import psycopg
 
 # Load variables from secrets.env
 load_dotenv("secrets.env")
+
+# Ensure project root is importable so we can access materials-agent modules
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if PROJECT_ROOT not in sys.path:
+    sys.path.append(PROJECT_ROOT)
 
 # region LangGraph State
 class FactCheckState(TypedDict):
@@ -30,8 +35,11 @@ class FactCheckState(TypedDict):
     client_context: Optional[str]
 
     # progressively added fields:
+    search_count: int
     analyzed_claims: List[Dict]
     claim_verdicts: List[Dict]
+    # optional handoff status
+    materials_status: Optional[str]
 
 # endregion
 
@@ -99,15 +107,77 @@ def analyze_node(state: FactCheckState) -> Command:
 
 # region Search + Evaluate for result
 def fan_out_searches(state: FactCheckState) -> Command:
-    """Create a search task for each subclaim, allowing for parallel execution"""
-    
-    claims = state["analyzed_claims"]
+    """Run searches sequentially within this node and accumulate verdicts.
 
-    # Provide 1 search instance per claim and add 1 "fanned out search" to the search count
-    return Parallel([
-        Command(Send("search_single_claim", {"claim": sc['claim'], "analysis": sc['analysis']}))
-        for sc in claims
-    ])
+    This avoids concurrency/recursion complexity and returns a single update
+    with all claim_verdicts populated.
+    """
+    claims = state.get("analyzed_claims", [])
+
+    gathered: list[dict] = []
+
+    for sc in claims:
+        try:
+            claim = sc["claim"]
+            strategy = sc["analysis"]
+        except Exception:
+            # Skip malformed entries
+            continue
+
+        prompt = f"""
+    You are fact-checking this claim: {claim}
+
+    An LLM before you has analyzed this claim and determined that you need:
+    - {strategy['num_sources_needed']} credible sources at minimum
+    - to prioritise these source types: {', '.join(strategy['source_types'])}
+    - to focus on these types of information: {', '.join(strategy['focus_areas'])}
+    
+    Your job is to formulate an appropriate search query, find the best sources to fact-check this claim, 
+    and provide a verdict of the claim's credibility based on the sources found.
+
+    You may continue searching until you feel confident of a verdict, but you may only search up to a maximum of 3 searches. This is a HARD LIMIT.
+    
+    Make sure you critically evaluate the sources for credibility and relevance.
+
+    You must also decide on the next step to take, by determining if the claim is suitable to be passed to a materials agent that generates presentation materials based on this claim.
+
+    Typically, claims that are FALSE or CANNOT BE DETERMINED should not be passed to the materials agent.
+    However, if you believe that the claim can be used with caveats, you may continue to pass it to the materials agent.
+
+    Thereafter, provide all your findings and decision as JSON output in this format:
+    {{
+        overall_verdict: [TRUE / FALSE / CANNOT BE DETERMINED], 
+        explanation: str, 
+        main_evidence: list of dicts with 'source' and 'summary', # describing the key sources used to make your verdict, with a 1 line short summary
+        pass_to_materials_agent: [TRUE / FALSE]
+    }}
+
+    Do not provide any extra text or Python code outside of the JSON output.
+    """
+
+        response = agent.invoke({"messages": [{"role": "user", "content": prompt}]})
+
+        try:
+            content = response.get("results") or response
+            if isinstance(content, str):
+                current_result = json.loads(content)
+            elif isinstance(content, dict) and "output" in content:
+                current_result = json.loads(content["output"])  # heuristic
+            else:
+                current_result = json.loads(str(content))
+        except Exception as e:
+            current_result = {
+                "overall_verdict": "CANNOT BE DETERMINED",
+                "explanation": f"Parse error: {e}",
+                "main_evidence": [],
+                "pass_to_materials_agent": False,
+            }
+
+        print(current_result)
+        gathered.append(current_result)
+        print(f"Search complete for {claim}.")
+
+    return Command(update={"claim_verdicts": gathered})
 
 def search_single_claim(state: FactCheckState) -> Command:
     """Search for ONE claim with its strategy"""
@@ -150,16 +220,30 @@ def search_single_claim(state: FactCheckState) -> Command:
     )
 
     print(response)
-    current_claim_result = json.load(response["results"])
+    # Expect response to include an LLM-generated JSON string
+    try:
+        content = response.get("results") or response
+        if isinstance(content, str):
+            current_claim_result = json.loads(content)
+        elif isinstance(content, dict) and "output" in content:
+            current_claim_result = json.loads(content["output"])  # heuristic
+        else:
+            # last resort: try to stringify and parse
+            current_claim_result = json.loads(str(content))
+    except Exception as e:
+        current_claim_result = {"overall_verdict": "CANNOT BE DETERMINED", "explanation": f"Parse error: {e}", "main_evidence": [], "pass_to_materials_agent": False}
     print(current_claim_result)
-    all_claim_verdicts = state['claim_verdicts']
+    all_claim_verdicts = list(state.get('claim_verdicts', []))
     all_claim_verdicts.append(current_claim_result)
 
     print(f"Search complete for {claim}.")
 
-    return Command(
-        update={"claim_verdicts": all_claim_verdicts}
-    )
+    # If there are still remaining claims, loop back to 'search' to dispatch the next
+    has_more = bool(state.get("remaining_claims"))
+    if has_more:
+        return Command(update={"claim_verdicts": all_claim_verdicts}, goto="search")
+    else:
+        return Command(update={"claim_verdicts": all_claim_verdicts})
 
 #endregion
 
@@ -177,20 +261,26 @@ def save_to_db(state: FactCheckState) -> Command:
     """
 
     verdicts = state["claim_verdicts"]
-     # Connect to an existing database
+    salesperson_id = state.get("salesperson_id")
+    claim_id = state.get("claim_id")
+
+    # Connect to an existing database
     with psycopg.connect("dbname=claim_verifications user=fact-checker password=fact-checker host=localhost port=5432") as conn:
 
         # Inserting data
         for verdict in verdicts:
             try: 
+                verdict_str = str(verdict.get('overall_verdict', '')).upper()
+                overall_bool = True if verdict_str == 'TRUE' else False
+                evidence_json = json.dumps(verdict.get('main_evidence', []))
                 conn.execute(
                     "INSERT INTO claim_verifications (salesperson_id, claim_id, overall_verdict, explanation, main_evidence) VALUES (%s, %s, %s, %s, %s)",
                     (
-                        verdict['salesperson_id'],
-                        verdict['claim_id'],
-                        verdict['overall_verdict'],
-                        verdict['explanation'],
-                        verdict['main_evidence']
+                        salesperson_id,
+                        claim_id,
+                        overall_bool,
+                        verdict.get('explanation'),
+                        evidence_json
                     )
                 )
                 print("Verdict saved to database.")
@@ -201,14 +291,63 @@ def save_to_db(state: FactCheckState) -> Command:
             
     return Command(update={"status": "verdict_saved"})
 
-def pass_to_materials(state: FactCheckState) -> Command:
-    verdicts = state["claim_verdicts"] # List of verdict dictionaries
-    for verdict in verdicts:
-        if verdict["pass_to_materials_agent"] == True:
-            #pass to materials
-            pass
 
-    return Command(goto=END)
+def pass_to_materials(state: FactCheckState) -> Command:
+    """Trigger the Materials Decision Agent with approved claims and persist decisions.
+
+    Uses a dynamic import to load the integration bridge from the sibling
+    'materials-agent' folder (hyphenated, not importable as a package by default).
+    """
+    import importlib.util
+    import os
+    import sys
+
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    materials_dir = os.path.join(base_dir, "materials-agent")
+    bridge_path = os.path.join(materials_dir, "integration_bridge.py")
+
+    approved_claims = [v for v in state.get("claim_verdicts", []) if v.get("pass_to_materials_agent") is True]
+    if not approved_claims:
+        print("No claims approved for materials generation")
+        return Command(goto=END)
+
+    if not os.path.isfile(bridge_path):
+        print(f"Materials integration bridge not found at {bridge_path}")
+        return Command(goto=END)
+
+    try:
+        # Ensure 'materials-agent' directory is on sys.path so that
+        # integration_bridge can import sibling modules like materials_decision_agent
+        if materials_dir not in sys.path:
+            sys.path.append(materials_dir)
+
+        spec = importlib.util.spec_from_file_location("materials_integration_bridge", bridge_path)
+        bridge = importlib.util.module_from_spec(spec)
+        assert spec and spec.loader
+        spec.loader.exec_module(bridge)
+
+        print(f"Passing {len(approved_claims)} verified claims to materials agent...")
+        result = bridge.run_complete_pipeline(state)
+
+        status = result.get("status", "unknown") if isinstance(result, dict) else "unknown"
+        print(f"Materials agent result: {status}")
+
+        # Optionally persist summary in state
+        update = {
+            "materials_agent_status": status,
+        }
+        if isinstance(result, dict):
+            update.update({
+                "materials_session_id": result.get("session_id"),
+                "materials_recommendations_count": result.get("recommendations_count"),
+                "materials_selected_count": result.get("selected_materials_count"),
+            })
+
+        return Command(update=update, goto=END)
+
+    except Exception as e:
+        print(f"Error invoking materials agent: {e}")
+        return Command(update={"materials_agent_status": "error", "materials_error": str(e)}, goto=END)
 
 #endregion
 
@@ -308,8 +447,13 @@ def scrape_webpage(url: str) -> str: # Tested independently
     Output: Text content of the webpage
     """
 
-    article = newspaper.article(url)
-    return article.text
+    try:
+        article = Article(url)
+        article.download()
+        article.parse()
+        return article.text
+    except Exception as e:
+        return f"Error scraping {url}: {e}"
 
 @tool
 def query_rag_system(refined_query: str) -> str: # Not yet implemented
@@ -356,6 +500,7 @@ graph =  StateGraph(FactCheckState)
 # add nodes to graph
 graph.add_node("analyze", analyze_node)
 graph.add_node("search", fan_out_searches)
+graph.add_node("search_single_claim", search_single_claim)
 graph.add_node("save", save_to_db)
 graph.add_node("pass_to_materials", pass_to_materials)
 

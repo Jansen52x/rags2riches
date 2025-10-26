@@ -1,3 +1,13 @@
 .DS_Store
 fact-checker-agent/secrets.env
 fact-checker-agent/.venv
+env/
+*/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+*.sqlite3
+*.log
+logs/
+*.env
