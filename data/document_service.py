@@ -7,6 +7,7 @@ import uuid
 from datetime import datetime
 from config import settings
 from embedding_service import EmbeddingService
+from multimodal_processor import MultimodalProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +17,9 @@ class DocumentService:
 
     def __init__(self, embedding_service: EmbeddingService):
         self.embedding_service = embedding_service
+
+        # Initialize multimodal processor
+        self.multimodal_processor = MultimodalProcessor(settings)
 
         # Connect to ChromaDB
         self.chroma_client = chromadb.HttpClient(
@@ -61,7 +65,7 @@ class DocumentService:
 
     def process_pdf(self, file_path: str, filename: str) -> Dict[str, Any]:
         """
-        Process a PDF file: extract text, chunk, embed, and store in ChromaDB
+        Process a PDF file: extract text, images, chunk, embed, and store in ChromaDB
 
         Args:
             file_path: Path to the PDF file
@@ -71,6 +75,9 @@ class DocumentService:
             Dictionary with processing results
         """
         try:
+            # Generate document ID early for image extraction
+            document_id = f"doc_{uuid.uuid4().hex[:12]}"
+
             # Extract text from PDF
             reader = PdfReader(file_path)
             all_text = ""
@@ -81,6 +88,16 @@ class DocumentService:
                 all_text += f"\n\n[Page {page_num + 1}]\n{text}"
 
             logger.info(f"Extracted text from {page_count} pages of {filename}")
+
+            # Process images and convert to text
+            multimodal_result = self.multimodal_processor.process_pdf_with_images(
+                file_path, document_id, all_text
+            )
+            all_text = multimodal_result['content']
+            has_images = multimodal_result['has_images']
+            image_count = multimodal_result['image_count']
+
+            logger.info(f"Multimodal processing: {image_count} images found")
 
             # Chunk the text
             chunks = self.chunk_text(all_text)
@@ -94,9 +111,6 @@ class DocumentService:
                     "error": "No text content found in PDF"
                 }
 
-            # Generate document ID
-            document_id = f"doc_{uuid.uuid4().hex[:12]}"
-
             # Generate embeddings for all chunks
             logger.info(f"Generating embeddings for {len(chunks)} chunks...")
             embeddings = self.embedding_service.embed_batch(chunks)
@@ -109,7 +123,9 @@ class DocumentService:
                     "filename": filename,
                     "chunk_index": i,
                     "total_chunks": len(chunks),
-                    "indexed_at": datetime.utcnow().isoformat()
+                    "indexed_at": datetime.utcnow().isoformat(),
+                    "has_images": has_images,
+                    "image_count": image_count
                 }
                 for i in range(len(chunks))
             ]
@@ -129,7 +145,9 @@ class DocumentService:
                 "filename": filename,
                 "status": "indexed",
                 "chunks_count": len(chunks),
-                "page_count": page_count
+                "page_count": page_count,
+                "has_images": has_images,
+                "image_count": image_count
             }
 
         except Exception as e:

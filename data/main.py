@@ -37,6 +37,8 @@ class DocumentResponse(BaseModel):
     status: str
     chunks_count: int
     page_count: int = None
+    has_images: bool = False
+    image_count: int = 0
 
 
 class DocumentListItem(BaseModel):

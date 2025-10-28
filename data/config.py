@@ -15,6 +15,7 @@ class Settings(BaseSettings):
 
     # Models
     EMBEDDING_MODEL: str = "nvidia/nv-embed-v1"
+    VISION_MODEL: str = "microsoft/phi-3-vision-128k-instruct"
 
     # Document Processing
     CHUNK_SIZE: int = 1024
@@ -23,6 +24,13 @@ class Settings(BaseSettings):
     # Upload Settings
     UPLOAD_DIR: str = "uploads"
     MAX_UPLOAD_SIZE_MB: int = 100
+
+    # Multimodal Settings
+    ENABLE_OCR: bool = True
+    ENABLE_IMAGE_CAPTIONING: bool = False  # Set to True to use NVIDIA vision model for image descriptions
+    IMAGE_STORAGE_PATH: str = "image_store"
+    MAX_IMAGE_SIZE_MB: int = 10
+    SUPPORTED_IMAGE_FORMATS: list = ["jpg", "jpeg", "png", "webp"]
 
     # Service Configuration
     LOG_LEVEL: str = "INFO"
