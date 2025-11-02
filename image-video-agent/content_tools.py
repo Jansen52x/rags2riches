@@ -1,10 +1,17 @@
 from langchain.tools import tool
 from typing import Dict, Any
 import json
+import replicate
+import requests
+from pathlib import Path
 from content_generator import ContentGenerator
 
 # Initialize generator
 generator = ContentGenerator()
+
+# Create directory for AI-generated images
+AI_IMAGE_DIR = Path("generated_content/ai_images")
+AI_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
 
 @tool
 def generate_market_share_chart(data: str) -> str:
@@ -257,6 +264,89 @@ def generate_animated_video(data: str) -> str:
         return f"❌ Error generating animated video: {str(e)}"
 
 
+@tool
+def generate_ai_image(data: str) -> str:
+    """
+    Generate a custom AI image using Google's Imagen-4 via Replicate API.
+    This tool creates photorealistic or artistic images from text descriptions.
+    Use this for custom illustrations, marketing visuals, concept art, or any creative imagery.
+    
+    Args:
+        data: JSON string with structure:
+        {
+            "prompt": "Detailed description of the image to generate",
+            "aspect_ratio": "16:9" (optional, options: "1:1", "16:9", "9:16", "4:3", "3:4", default: "16:9"),
+            "safety_filter_level": "block_medium_and_above" (optional, default: "block_medium_and_above"),
+            "filename": "custom_name" (optional, will auto-generate if not provided)
+        }
+    
+    Returns:
+        Path to generated image file or error message
+        
+    Example prompts:
+    - "modern office building with glass facade, architectural visualization, high quality"
+    - "professional business person in a suit, corporate photography style, confident"
+    - "abstract data visualization with blue and purple colors, modern design, geometric"
+    - "team of diverse professionals collaborating around a table, natural lighting"
+    """
+    try:
+        data_dict = json.loads(data)
+        
+        # Validate required field
+        if "prompt" not in data_dict:
+            return "❌ Error: 'prompt' field is required"
+        
+        # Prepare input for Replicate
+        replicate_input = {
+            "prompt": data_dict["prompt"],
+            "aspect_ratio": data_dict.get("aspect_ratio", "16:9"),
+            "safety_filter_level": data_dict.get("safety_filter_level", "block_medium_and_above")
+        }
+        
+        print(f"🎨 Generating AI image with prompt: '{data_dict['prompt'][:60]}...'")
+        
+        # Run Replicate model
+        output = replicate.run(
+            "google/imagen-4",
+            input=replicate_input
+        )
+        
+        # Handle both single URL and list of URLs
+        if isinstance(output, list):
+            image_url = output[0]
+        else:
+            image_url = output
+        
+        # Generate filename
+        if "filename" in data_dict:
+            filename = f"{data_dict['filename']}.png"
+        else:
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"ai_image_{timestamp}.png"
+        
+        # Full path
+        file_path = AI_IMAGE_DIR / filename
+        
+        # Download the image
+        response = requests.get(image_url)
+        response.raise_for_status()
+        
+        with open(file_path, "wb") as f:
+            f.write(response.content)
+        
+        return f"✅ Generated AI image: {file_path}\nPrompt: {data_dict['prompt']}"
+        
+    except replicate.exceptions.ReplicateError as e:
+        return f"❌ Replicate API error: {str(e)}"
+    except requests.exceptions.RequestException as e:
+        return f"❌ Error downloading image: {str(e)}"
+    except json.JSONDecodeError as e:
+        return f"❌ Invalid JSON format: {str(e)}"
+    except Exception as e:
+        return f"❌ Error generating AI image: {str(e)}"
+
+
 # List of all available tools
 content_generation_tools = [
     generate_market_share_chart,
@@ -264,5 +354,6 @@ content_generation_tools = [
     generate_competitive_matrix,
     generate_swot_analysis,
     generate_financial_comparison,
-    generate_animated_video
+    generate_animated_video,
+    generate_ai_image
 ]
