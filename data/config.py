@@ -18,8 +18,8 @@ class Settings(BaseSettings):
     VISION_MODEL: str = "microsoft/phi-3-vision-128k-instruct"
 
     # Document Processing
-    CHUNK_SIZE: int = 1024
-    CHUNK_OVERLAP: int = 50
+    CHUNK_SIZE: int = 1500
+    CHUNK_OVERLAP: int = 300
 
     # Upload Settings
     UPLOAD_DIR: str = "uploads"
