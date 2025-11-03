@@ -5,7 +5,7 @@ class Settings(BaseSettings):
     """Configuration settings for RAG Query Service"""
 
     # ChromaDB Configuration
-    CHROMADB_HOST: str = "chromadb"
+    CHROMADB_HOST: str = "localhost"
     CHROMADB_PORT: int = 8000
     CHROMA_COLLECTION_NAME: str = "rag_documents"
 
@@ -20,6 +20,12 @@ class Settings(BaseSettings):
     # LLM Generation Settings
     MAX_TOKENS: int = 2000
     TEMPERATURE: float = 0.0
+
+    # Reranker Settings
+    USE_RERANKER: bool = True
+    RERANKER_MODEL_NAME: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    DEFAULT_INITIAL_K: int = 10  # Number of docs to fetch before reranking
+    RERANK_TOP_K: int = 5  # Number of docs to return after reranking
 
     # Query Defaults
     DEFAULT_K: int = 5

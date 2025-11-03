@@ -9,6 +9,9 @@ numpy<2.0
 # NVIDIA NIM (OpenAI-compatible client)
 openai>=1.12.0
 
+# Semantic Re-ranker
+sentence-transformers>=2.2.0
+
 # Configuration
 pydantic==2.5.0
 pydantic-settings==2.1.0

@@ -13,6 +13,9 @@ openai>=1.12.0
 # PDF Processing
 pypdf==3.17.1
 
+# Data Processing
+pandas>=2.0.0
+
 # Image Processing (Multimodal)
 Pillow>=10.0.0
 pytesseract>=0.3.10

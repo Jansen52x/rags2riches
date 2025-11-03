@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     IMAGE_STORAGE_PATH: str = "image_store"
     MAX_IMAGE_SIZE_MB: int = 10
     SUPPORTED_IMAGE_FORMATS: list = ["jpg", "jpeg", "png", "webp"]
+    TESSERACT_CMD: str = r"C:\Program Files\Tesseract-OCR\tesseract.exe"  # Path to Tesseract executable
 
     # Service Configuration
     LOG_LEVEL: str = "INFO"
