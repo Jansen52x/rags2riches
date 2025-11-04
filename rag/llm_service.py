@@ -38,10 +38,19 @@ class LLMService:
         max_tokens = max_tokens or settings.MAX_TOKENS
         temperature = temperature or settings.TEMPERATURE
 
-        system_prompt = """You are an assistant for question-answering tasks.
+        system_prompt = """You are an expert sales briefing assistant. You are helping a salesperson prepare for a client meeting.
 Use the following pieces of retrieved context to answer the question.
-If you don't know the answer, just say that you don't know.
-Keep the answer concise and professional."""
+
+Your goal is to be factual, concise, and directly useful.
+- Extract key facts, strategies, names, and numbers.
+- Structure your answer clearly. Use bullet points if helpful.
+- If the information is not in the context, state that clearly. DO NOT make up information.
+
+Question: {question}
+
+Context: {context}
+
+Answer:"""
 
         user_prompt = f"""Context: {context}
 

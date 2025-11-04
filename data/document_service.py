@@ -1,9 +1,11 @@
 import chromadb
 from pypdf import PdfReader
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import logging
 import os
 import uuid
+import json
+import pandas as pd
 from datetime import datetime
 from config import settings
 from embedding_service import EmbeddingService
@@ -280,6 +282,468 @@ class DocumentService:
                 "total_chunks": 0,
                 "collection_name": settings.CHROMA_COLLECTION_NAME
             }
+
+    def process_text_data(
+        self,
+        text_content: str,
+        document_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Process plain text or structured text data and add to ChromaDB
+
+        Args:
+            text_content: The text content to process
+            document_id: Optional custom document ID
+            metadata: Optional metadata to attach to chunks
+
+        Returns:
+            Dictionary with processing results
+        """
+        try:
+            # Generate document ID if not provided
+            if not document_id:
+                document_id = f"doc_{uuid.uuid4().hex[:12]}"
+
+            # Initialize metadata if not provided
+            if metadata is None:
+                metadata = {}
+
+            # Add default metadata
+            metadata.update({
+                "document_id": document_id,
+                "indexed_at": datetime.utcnow().isoformat()
+            })
+
+            # Chunk the text
+            chunks = self.chunk_text(text_content)
+
+            if not chunks:
+                logger.warning(f"No chunks created from text content")
+                return {
+                    "document_id": document_id,
+                    "status": "failed",
+                    "error": "No text content to process"
+                }
+
+            # Generate embeddings for all chunks
+            logger.info(f"Generating embeddings for {len(chunks)} chunks...")
+            embeddings = self.embedding_service.embed_batch(chunks)
+
+            # Prepare data for ChromaDB
+            ids = [f"{document_id}_chunk_{i}" for i in range(len(chunks))]
+            metadatas = [
+                {
+                    **metadata,
+                    "chunk_index": i,
+                    "total_chunks": len(chunks)
+                }
+                for i in range(len(chunks))
+            ]
+
+            # Add to ChromaDB
+            self.collection.add(
+                ids=ids,
+                embeddings=embeddings,
+                documents=chunks,
+                metadatas=metadatas
+            )
+
+            logger.info(f"Successfully indexed document {document_id} with {len(chunks)} chunks")
+
+            return {
+                "document_id": document_id,
+                "status": "indexed",
+                "chunks_count": len(chunks)
+            }
+
+        except Exception as e:
+            logger.error(f"Error processing text data: {e}")
+            raise
+
+    def process_json(self, file_path: str) -> Dict[str, Any]:
+        """
+        Process a JSON file and add documents to ChromaDB
+
+        Expected JSON format:
+        [
+            {
+                "content": "text content",
+                "metadata": {"key": "value", ...}
+            },
+            ...
+        ]
+
+        Or for synthetic data format:
+        [
+            {
+                "client_data": {...},
+                "industry_overview": "...",
+                "document_text": [tokens] or "text"
+            },
+            ...
+        ]
+
+        Args:
+            file_path: Path to JSON file
+
+        Returns:
+            Dictionary with processing results
+        """
+        try:
+            logger.info(f"Processing JSON file: {file_path}")
+
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+            if not isinstance(data, list):
+                data = [data]
+
+            total_docs = 0
+            total_chunks = 0
+            errors = []
+
+            for idx, item in enumerate(data):
+                try:
+                    # Handle synthetic data format
+                    if 'client_data' in item and 'industry_overview' in item:
+                        client_data = item['client_data']
+
+                        # Build text content
+                        text_parts = [
+                            f"Company: {client_data.get('company_name', '')}",
+                            f"Industry: {client_data.get('industry', '')}",
+                            f"Contact: {client_data.get('contact_person', '')}",
+                            f"Email: {client_data.get('contact_email', '')}",
+                            f"Description: {client_data.get('company_description', '')}",
+                            f"Industry Overview: {item.get('industry_overview', '')}"
+                        ]
+
+                        content = "\n".join(text_parts)
+
+                        # Prepare metadata
+                        doc_metadata = {
+                            "source": "synthetic_data",
+                            "company_name": client_data.get('company_name', ''),
+                            "industry": client_data.get('industry', ''),
+                            "contact_email": client_data.get('contact_email', ''),
+                            "source_file": os.path.basename(file_path)
+                        }
+
+                        # Add PDF path if present
+                        if 'pdf_brochure_path' in item:
+                            doc_metadata['pdf_brochure_path'] = item['pdf_brochure_path']
+
+                        # Add image paths if present
+                        if 'brochure_path' in item:
+                            doc_metadata['brochure_path'] = item['brochure_path']
+                        if 'flyer_path' in item:
+                            doc_metadata['flyer_path'] = item['flyer_path']
+
+                    # Handle generic format
+                    elif 'content' in item:
+                        content = item['content']
+                        doc_metadata = item.get('metadata', {})
+                        doc_metadata['source_file'] = os.path.basename(file_path)
+
+                    else:
+                        # Fallback: use entire item as text
+                        content = json.dumps(item, indent=2)
+                        doc_metadata = {
+                            "source_file": os.path.basename(file_path),
+                            "record_index": idx
+                        }
+
+                    # Process the document
+                    result = self.process_text_data(
+                        text_content=content,
+                        metadata=doc_metadata
+                    )
+
+                    if result['status'] == 'indexed':
+                        total_docs += 1
+                        total_chunks += result['chunks_count']
+
+                except Exception as e:
+                    error_msg = f"Error processing record {idx}: {str(e)}"
+                    logger.error(error_msg)
+                    errors.append(error_msg)
+                    continue
+
+            return {
+                "status": "completed",
+                "source_file": os.path.basename(file_path),
+                "documents_processed": total_docs,
+                "total_chunks": total_chunks,
+                "errors": errors
+            }
+
+        except Exception as e:
+            logger.error(f"Error processing JSON file: {e}")
+            raise
+
+    def process_csv(self, file_path: str, text_columns: Optional[List[str]] = None) -> Dict[str, Any]:
+        """
+        Process a CSV file and add documents to ChromaDB
+
+        Args:
+            file_path: Path to CSV file
+            text_columns: List of column names to combine as content (if None, uses all)
+
+        Returns:
+            Dictionary with processing results
+        """
+        try:
+            logger.info(f"Processing CSV file: {file_path}")
+
+            df = pd.read_csv(file_path)
+
+            total_docs = 0
+            total_chunks = 0
+            errors = []
+
+            for idx, row in df.iterrows():
+                try:
+                    # Determine which columns to use
+                    if text_columns:
+                        content_parts = [str(row[col]) for col in text_columns if col in df.columns]
+                    else:
+                        content_parts = [f"{col}: {str(row[col])}" for col in df.columns]
+
+                    content = "\n".join(content_parts)
+
+                    # Create metadata from all columns
+                    doc_metadata = {
+                        "source": "csv",
+                        "source_file": os.path.basename(file_path),
+                        "row_index": int(idx)
+                    }
+
+                    # Add all row data as metadata (convert to strings)
+                    for col in df.columns:
+                        try:
+                            doc_metadata[col] = str(row[col])
+                        except:
+                            pass
+
+                    # Process the document
+                    result = self.process_text_data(
+                        text_content=content,
+                        metadata=doc_metadata
+                    )
+
+                    if result['status'] == 'indexed':
+                        total_docs += 1
+                        total_chunks += result['chunks_count']
+
+                except Exception as e:
+                    error_msg = f"Error processing row {idx}: {str(e)}"
+                    logger.error(error_msg)
+                    errors.append(error_msg)
+                    continue
+
+            return {
+                "status": "completed",
+                "source_file": os.path.basename(file_path),
+                "documents_processed": total_docs,
+                "total_chunks": total_chunks,
+                "errors": errors
+            }
+
+        except Exception as e:
+            logger.error(f"Error processing CSV file: {e}")
+            raise
+
+    def process_image(self, image_path: str, metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """
+        Process a single image file (PNG, JPG, etc.) using OCR
+
+        Args:
+            image_path: Path to image file
+            metadata: Optional metadata to attach
+
+        Returns:
+            Dictionary with processing results
+        """
+        try:
+            if not os.path.exists(image_path):
+                return {
+                    "status": "failed",
+                    "error": f"Image file not found: {image_path}"
+                }
+
+            logger.info(f"Processing image: {image_path}")
+
+            # Extract text from image using OCR
+            image_text = self.multimodal_processor.process_image_to_text(image_path)
+
+            if not image_text or not image_text.strip():
+                logger.warning(f"No text extracted from image: {image_path}")
+                return {
+                    "status": "failed",
+                    "error": "No text extracted from image"
+                }
+
+            # Prepare metadata
+            if metadata is None:
+                metadata = {}
+
+            metadata.update({
+                "source": "image",
+                "image_path": image_path,
+                "filename": os.path.basename(image_path)
+            })
+
+            # Process the extracted text
+            result = self.process_text_data(
+                text_content=image_text,
+                metadata=metadata
+            )
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Error processing image {image_path}: {e}")
+            raise
+
+    def process_batch_images(self, image_directory: str) -> Dict[str, Any]:
+        """
+        Process multiple image files from a directory
+
+        Args:
+            image_directory: Path to directory containing image files
+
+        Returns:
+            Dictionary with batch processing results
+        """
+        try:
+            logger.info(f"Processing images from directory: {image_directory}")
+
+            # Get all image files
+            image_extensions = ['.png', '.jpg', '.jpeg', '.webp']
+            image_files = [
+                f for f in os.listdir(image_directory)
+                if os.path.splitext(f.lower())[1] in image_extensions
+            ]
+
+            if not image_files:
+                return {
+                    "status": "completed",
+                    "message": "No image files found in directory",
+                    "documents_processed": 0,
+                    "total_chunks": 0
+                }
+
+            total_docs = 0
+            total_chunks = 0
+            errors = []
+
+            for image_file in image_files:
+                try:
+                    image_path = os.path.join(image_directory, image_file)
+                    logger.info(f"Processing image: {image_file}")
+
+                    # Extract metadata from filename if it follows pattern
+                    # e.g., "brochure_001.png" or "flyer_025.png"
+                    file_metadata = {
+                        "source_directory": os.path.basename(image_directory)
+                    }
+
+                    # Try to extract type and index from filename
+                    base_name = os.path.splitext(image_file)[0]
+                    if '_' in base_name:
+                        parts = base_name.rsplit('_', 1)
+                        file_metadata['material_type'] = parts[0]
+                        try:
+                            file_metadata['material_index'] = int(parts[1])
+                        except ValueError:
+                            pass
+
+                    result = self.process_image(image_path, file_metadata)
+
+                    if result['status'] == 'indexed':
+                        total_docs += 1
+                        total_chunks += result['chunks_count']
+                    else:
+                        errors.append(f"{image_file}: {result.get('error', 'Unknown error')}")
+
+                except Exception as e:
+                    error_msg = f"Error processing {image_file}: {str(e)}"
+                    logger.error(error_msg)
+                    errors.append(error_msg)
+                    continue
+
+            return {
+                "status": "completed",
+                "source_directory": image_directory,
+                "documents_processed": total_docs,
+                "total_chunks": total_chunks,
+                "total_files": len(image_files),
+                "errors": errors
+            }
+
+        except Exception as e:
+            logger.error(f"Error processing batch images: {e}")
+            raise
+
+    def process_batch_pdfs(self, pdf_directory: str) -> Dict[str, Any]:
+        """
+        Process multiple PDF files from a directory
+
+        Args:
+            pdf_directory: Path to directory containing PDF files
+
+        Returns:
+            Dictionary with batch processing results
+        """
+        try:
+            logger.info(f"Processing PDFs from directory: {pdf_directory}")
+
+            pdf_files = [f for f in os.listdir(pdf_directory) if f.endswith('.pdf')]
+
+            if not pdf_files:
+                return {
+                    "status": "completed",
+                    "message": "No PDF files found in directory",
+                    "documents_processed": 0,
+                    "total_chunks": 0
+                }
+
+            total_docs = 0
+            total_chunks = 0
+            errors = []
+
+            for pdf_file in pdf_files:
+                try:
+                    pdf_path = os.path.join(pdf_directory, pdf_file)
+                    logger.info(f"Processing PDF: {pdf_file}")
+
+                    result = self.process_pdf(pdf_path, pdf_file)
+
+                    if result['status'] == 'indexed':
+                        total_docs += 1
+                        total_chunks += result['chunks_count']
+                    else:
+                        errors.append(f"{pdf_file}: {result.get('error', 'Unknown error')}")
+
+                except Exception as e:
+                    error_msg = f"Error processing {pdf_file}: {str(e)}"
+                    logger.error(error_msg)
+                    errors.append(error_msg)
+                    continue
+
+            return {
+                "status": "completed",
+                "source_directory": pdf_directory,
+                "documents_processed": total_docs,
+                "total_chunks": total_chunks,
+                "total_files": len(pdf_files),
+                "errors": errors
+            }
+
+        except Exception as e:
+            logger.error(f"Error processing batch PDFs: {e}")
+            raise
 
     def health_check(self) -> bool:
         """

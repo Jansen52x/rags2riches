@@ -1,6 +1,7 @@
 import chromadb
 from typing import List, Dict, Any
 import logging
+from sentence_transformers import CrossEncoder
 from config import settings
 from embedding_service import EmbeddingService
 from llm_service import LLMService
@@ -9,11 +10,21 @@ logger = logging.getLogger(__name__)
 
 
 class RAGService:
-    """Main RAG service that orchestrates retrieval and generation"""
+    """Main RAG service that orchestrates retrieval, re-ranking, and generation"""
 
     def __init__(self, embedding_service: EmbeddingService, llm_service: LLMService):
         self.embedding_service = embedding_service
         self.llm_service = llm_service
+        
+        self.reranker = None
+        if settings.USE_RERANKER:
+            try:
+                # Load the cross-encoder model
+                self.reranker = CrossEncoder(settings.RERANKER_MODEL_NAME)
+                logger.info(f"Loaded re-ranker model: {settings.RERANKER_MODEL_NAME}")
+            except Exception as e:
+                logger.error(f"Failed to load re-ranker model '{settings.RERANKER_MODEL_NAME}': {e}")
+                self.reranker = None  # Ensure it's None if loading fails
 
         # Connect to ChromaDB
         self.chroma_client = chromadb.HttpClient(
@@ -33,20 +44,21 @@ class RAGService:
 
     def search(self, query: str, k: int = None) -> List[Dict[str, Any]]:
         """
-        Perform similarity search in the vector database
+        Perform similarity search in the vector database, followed by re-ranking.
 
         Args:
             query: Search query string
-            k: Number of results to return
+            k: Number of *initial* results to retrieve (before re-ranking)
 
         Returns:
-            List of search results with content, metadata, and scores
+            List of re-ranked and filtered search results
         """
         if not self.collection:
             logger.error("Collection not initialized")
             return []
 
-        k = k or settings.DEFAULT_K
+        # k (or DEFAULT_INITIAL_K) is the number of docs to fetch *before* re-ranking
+        initial_k = k or settings.DEFAULT_INITIAL_K
 
         try:
             # Generate query embedding
@@ -55,7 +67,7 @@ class RAGService:
             # Search in ChromaDB
             results = self.collection.query(
                 query_embeddings=[query_embedding],
-                n_results=k
+                n_results=initial_k
             )
 
             # Format results
@@ -65,12 +77,41 @@ class RAGService:
                     formatted_results.append({
                         'content': results['documents'][0][i],
                         'metadata': results['metadatas'][0][i] if results['metadatas'] else {},
+                        # Convert L2 distance to cosine similarity-like score (0-1)
                         'score': 1 - results['distances'][0][i] if results['distances'] else 0.0,
                         'id': results['ids'][0][i]
                     })
+            
+            if not formatted_results:
+                logger.info("No results found in vector store.")
+                return []
 
-            logger.info(f"Found {len(formatted_results)} results for query: {query[:50]}...")
-            return formatted_results
+            if self.reranker:
+                logger.info(f"Re-ranking {len(formatted_results)} initial documents...")
+                
+                # Prepare pairs for the cross-encoder: [query, doc_content]
+                pairs = [[query, doc['content']] for doc in formatted_results]
+                
+                # Get relevance scores
+                scores = self.reranker.predict(pairs)
+                
+                # Add scores to documents
+                for doc, score in zip(formatted_results, scores):
+                    doc['rerank_score'] = float(score)
+                
+                # Sort by new re-rank score (descending)
+                formatted_results.sort(key=lambda x: x['rerank_score'], reverse=True)
+                
+                # Filter to the final top-k (e.g., RERANK_TOP_K = 3)
+                final_k = settings.RERANK_TOP_K
+                reranked_results = formatted_results[:final_k]
+                
+                logger.info(f"Found {len(reranked_results)} re-ranked results for query: {query[:50]}...")
+                return reranked_results
+
+            logger.info(f"Found {len(formatted_results)} results (no re-ranking) for query: {query[:50]}...")
+            # If no reranker, return results from vector search, slicing to final_k
+            return formatted_results[:settings.RERANK_TOP_K]
 
         except Exception as e:
             logger.error(f"Error during search: {e}")
@@ -78,15 +119,15 @@ class RAGService:
 
     def query(self, query: str, k: int = None, include_sources: bool = True) -> Dict[str, Any]:
         """
-        Perform RAG query: retrieve relevant documents and generate answer
+        Perform RAG query: retrieve, re-rank, and generate.
 
         Args:
             query: User's question
-            k: Number of documents to retrieve
+            k: Number of *initial* documents to retrieve
             include_sources: Whether to include source documents in response
 
         Returns:
-            Dictionary containing answer and optionally source documents
+            Dictionary containing answer and optionally sources
         """
         if not self.collection:
             return {
@@ -95,8 +136,9 @@ class RAGService:
             }
 
         try:
-            # Retrieve relevant documents
-            search_results = self.search(query, k)
+            # Retrieve and re-rank relevant documents
+            initial_k = k or settings.DEFAULT_INITIAL_K
+            search_results = self.search(query, k=initial_k)
 
             if not search_results:
                 return {
@@ -104,16 +146,15 @@ class RAGService:
                     "sources": []
                 }
 
-            # Build context from search results
+            # Build context from (re-ranked) search results
             context = "\n\n".join([
-                f"Source {i+1}:\n{result['content']}"
+                f"Source {i+1} (ID: {result['id']}):\n{result['content']}"
                 for i, result in enumerate(search_results)
             ])
 
             # Generate answer using LLM
             answer = self.llm_service.generate(query, context)
 
-            # Prepare response
             response = {
                 "answer": answer,
             }
@@ -123,7 +164,8 @@ class RAGService:
                     {
                         "content": result['content'],
                         "metadata": result['metadata'],
-                        "score": result['score']
+                        "id": result['id'],
+                        "score": result.get('rerank_score', result.get('score', 0.0)) # Use rerank_score if available
                     }
                     for result in search_results
                 ]

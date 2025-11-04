@@ -32,8 +32,13 @@ class MultimodalProcessor:
         if self.enable_ocr:
             try:
                 import pytesseract
+                # Set tesseract path if configured
+                if hasattr(config, 'TESSERACT_CMD') and config.TESSERACT_CMD:
+                    pytesseract.pytesseract.tesseract_cmd = config.TESSERACT_CMD
+                    logger.info(f"OCR enabled with pytesseract at: {config.TESSERACT_CMD}")
+                else:
+                    logger.info("OCR enabled with pytesseract (using PATH)")
                 self.pytesseract = pytesseract
-                logger.info("OCR enabled with pytesseract")
             except ImportError:
                 logger.warning("pytesseract not available, OCR disabled")
                 self.enable_ocr = False

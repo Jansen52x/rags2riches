@@ -227,6 +227,116 @@ async def health():
     }
 
 
+@app.post("/documents/json")
+async def upload_json_file(file: UploadFile = File(...)):
+    """
+    Upload and process a JSON file
+
+    Supports both generic JSON format and synthetic data format
+    """
+    if not file.filename.endswith('.json'):
+        raise HTTPException(status_code=400, detail="Only JSON files are supported")
+
+    try:
+        # Save file temporarily
+        temp_path = os.path.join(settings.UPLOAD_DIR, file.filename)
+        with open(temp_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        # Process the JSON
+        logger.info(f"Processing JSON file: {file.filename}")
+        result = document_service.process_json(temp_path)
+
+        # Clean up temp file
+        os.remove(temp_path)
+
+        return result
+
+    except Exception as e:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        logger.error(f"Error processing JSON upload: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/documents/csv")
+async def upload_csv_file(file: UploadFile = File(...)):
+    """
+    Upload and process a CSV file
+
+    Each row will be indexed as a separate document
+    """
+    if not file.filename.endswith('.csv'):
+        raise HTTPException(status_code=400, detail="Only CSV files are supported")
+
+    try:
+        # Save file temporarily
+        temp_path = os.path.join(settings.UPLOAD_DIR, file.filename)
+        with open(temp_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        # Process the CSV
+        logger.info(f"Processing CSV file: {file.filename}")
+        result = document_service.process_csv(temp_path)
+
+        # Clean up temp file
+        os.remove(temp_path)
+
+        return result
+
+    except Exception as e:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        logger.error(f"Error processing CSV upload: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/documents/batch-pdfs")
+async def batch_upload_pdfs(directory_path: str):
+    """
+    Process multiple PDF files from a local directory
+
+    Args:
+        directory_path: Path to directory containing PDF files
+    """
+    if not os.path.exists(directory_path):
+        raise HTTPException(status_code=404, detail="Directory not found")
+
+    if not os.path.isdir(directory_path):
+        raise HTTPException(status_code=400, detail="Path is not a directory")
+
+    try:
+        result = document_service.process_batch_pdfs(directory_path)
+        return result
+    except Exception as e:
+        logger.error(f"Error processing batch PDFs: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/documents/batch-images")
+async def batch_upload_images(directory_path: str):
+    """
+    Process multiple image files from a local directory using OCR
+
+    Supports PNG, JPG, JPEG, WEBP formats
+
+    Args:
+        directory_path: Path to directory containing image files
+    """
+    if not os.path.exists(directory_path):
+        raise HTTPException(status_code=404, detail="Directory not found")
+
+    if not os.path.isdir(directory_path):
+        raise HTTPException(status_code=400, detail="Path is not a directory")
+
+    try:
+        result = document_service.process_batch_images(directory_path)
+        return result
+    except Exception as e:
+        logger.error(f"Error processing batch images: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/")
 async def root():
     """Root endpoint"""

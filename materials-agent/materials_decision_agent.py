@@ -41,6 +41,8 @@ class MaterialsDecisionState(TypedDict):
     session_id: str
     salesperson_id: str
     client_context: str
+    # Optional free-form creative guidance provided by user (e.g., "cafe theme, warm tones")
+    user_prompt: Optional[str]
     verified_claims: List[Dict]  # Claims that passed fact-checking
     
     # Decision outputs
@@ -247,6 +249,7 @@ def create_generation_queue(state: MaterialsDecisionState) -> Command:
     """Create a prioritized queue for material generation"""
     
     selected_materials = state["selected_materials"]
+    user_prompt: Optional[str] = state.get("user_prompt")
     
     # Create generation tasks with specific instructions
     generation_queue = []
@@ -263,7 +266,9 @@ def create_generation_queue(state: MaterialsDecisionState) -> Command:
             "priority": material["priority"],
             "status": "pending",
             "created_at": datetime.now(ZoneInfo("Asia/Singapore")).isoformat(),
-            "instructions": generate_creation_instructions(material)
+            # Include user-provided creative prompt so downstream generators can honor it
+            "user_prompt": user_prompt,
+            "instructions": generate_creation_instructions(material, user_prompt)
         }
         generation_queue.append(generation_task)
     
@@ -271,7 +276,7 @@ def create_generation_queue(state: MaterialsDecisionState) -> Command:
         update={"generation_queue": generation_queue}
     )
 
-def generate_creation_instructions(material: Dict) -> str:
+def generate_creation_instructions(material: Dict, user_prompt: Optional[str] = None) -> str:
     """Generate specific instructions for material creation agents"""
     
     material_type = material["material_type"]
@@ -289,6 +294,9 @@ def generate_creation_instructions(material: Dict) -> str:
     - Text amount: {content_req.get("text_amount", "moderate")}
     - Color scheme: {content_req.get("color_scheme", "corporate")}
     """
+
+    if user_prompt:
+        base_instruction += f"\nAdditional creative direction: {user_prompt}\n"
     
     if material_type == "slide":
         return base_instruction + """
@@ -394,8 +402,7 @@ def trigger_image_generation(material_specs: str) -> str:
     Input: JSON string with material specifications
     Output: Generation task ID or status
     """
-    print(f"Triggering image generation for: {material_specs}")
-    # This would integrate with the image generation agent (Member 5)
+
     return f"Image generation queued with task ID: {uuid.uuid4()}"
 
 @tool
@@ -405,8 +412,7 @@ def trigger_video_generation(material_specs: str) -> str:
     Input: JSON string with material specifications  
     Output: Generation task ID or status
     """
-    print(f"Triggering video generation for: {material_specs}")
-    # This would integrate with the video generation agent (Member 5)
+ 
     return f"Video generation queued with task ID: {uuid.uuid4()}"
 
 @tool

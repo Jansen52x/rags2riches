@@ -18,8 +18,8 @@ class Settings(BaseSettings):
     VISION_MODEL: str = "microsoft/phi-3-vision-128k-instruct"
 
     # Document Processing
-    CHUNK_SIZE: int = 1024
-    CHUNK_OVERLAP: int = 50
+    CHUNK_SIZE: int = 1500
+    CHUNK_OVERLAP: int = 300
 
     # Upload Settings
     UPLOAD_DIR: str = "uploads"
@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     IMAGE_STORAGE_PATH: str = "image_store"
     MAX_IMAGE_SIZE_MB: int = 10
     SUPPORTED_IMAGE_FORMATS: list = ["jpg", "jpeg", "png", "webp"]
+    TESSERACT_CMD: str = r"C:\Program Files\Tesseract-OCR\tesseract.exe"  # Path to Tesseract executable
 
     # Service Configuration
     LOG_LEVEL: str = "INFO"
