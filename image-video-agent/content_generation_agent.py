@@ -4,6 +4,11 @@ from langchain_anthropic import ChatAnthropic
 from typing import Literal
 import json
 import os
+from dotenv import load_dotenv
+from openai import api_key
+
+# Load environment variables from .env file
+load_dotenv()
 
 from content_state import ContentAgentState
 from content_tools import content_generation_tools
@@ -24,8 +29,8 @@ def planning_node(state: ContentAgentState) -> ContentAgentState:
     
     system_prompt = """You are a sales content generation specialist. 
     
-Your job is to analyze the meeting context and available data, then decide 
-what visualizations would be most effective for the sales meeting.
+Your job is to analyze the meeting context and available data, then create 
+a comprehensive set of visualizations for the sales meeting.
 
 Available tools:
 - generate_market_share_chart: For showing market share distribution (static PNG)
@@ -36,20 +41,23 @@ Available tools:
 - generate_video_presentation: For combining static images into a slideshow video
 - generate_animated_video: For creating an animated presentation with dynamic charts
   (bars growing, lines drawing, smooth transitions) - RECOMMENDED for presentations
+- generate_ai_image: For creating custom AI-generated images from text prompts using Google Imagen-4
+  (photorealistic images, illustrations, marketing visuals, creative imagery)
 
-Based on the context, decide which visualizations to create and call the 
-appropriate tools with the correct data.
+IMPORTANT: You must create BOTH:
+1. Data-driven visualizations (charts/videos) based on the available data
+2. AI-generated images if prompts are provided
 
 Guidelines:
-1. Prioritize high-impact visuals that tell a clear story
-2. For static analysis: Create 2-3 individual charts
-3. For presentations: Use generate_animated_video to create an engaging animated video
-4. Use the data that's actually available
-5. Match visualization type to the data and meeting goals
+1. ALWAYS generate relevant data visualizations (charts, SWOT, etc.) based on available data
+2. If client_data exists, generate a SWOT analysis
+3. If industry_data exists, generate a market share chart
+4. For presentations: Create an animated video with all the charts
+5. If ai_image_prompts are provided, ALSO generate those AI images
 6. Call tools one at a time with properly formatted JSON data
-7. When creating animated videos, pass the chart specifications in the "sections" array
+7. Think step by step and create a comprehensive presentation package
 
-Think step by step about what would be most valuable for this meeting.
+Your goal is to create a complete set of materials, not just one type of content.
 """
     
     human_prompt = f"""
@@ -60,6 +68,7 @@ Available Data:
 {json.dumps(data_available, indent=2)}
 
 What visualizations should we create? Call the appropriate tools with the data.
+If ai_image_prompts are provided in the data, use the generate_ai_image tool to create those images.
 """
     
     messages = [
@@ -129,9 +138,10 @@ def create_content_generation_agent():
     Create a LangGraph agent for content generation
     """
     global llm, llm_with_tools
+
     
     # Initialize LLM with tools (done here so environment variables are loaded)
-    llm = ChatAnthropic(model="claude-3-5-sonnet-20241022", temperature=0)
+    llm = ChatAnthropic(model="claude-sonnet-4-5-20250929", temperature=0)
     llm_with_tools = llm.bind_tools(content_generation_tools)
     
     # Create graph
@@ -193,7 +203,24 @@ if __name__ == "__main__":
             },
             "has_competitor_data": True,
             "has_financial_data": False,
-            "has_historical_data": False
+            "has_historical_data": False,
+            "ai_image_prompts": [
+                {
+                    "prompt": "modern technology office with diverse team collaborating around a conference table, professional corporate environment, natural lighting, high quality",
+                    "aspect_ratio": "16:9",
+                    "filename": "team_collaboration"
+                },
+                {
+                    "prompt": "futuristic digital transformation concept with abstract technology network, glowing connections, blue and purple colors, professional business style, 3D illustration",
+                    "aspect_ratio": "16:9",
+                    "filename": "digital_transformation"
+                },
+                {
+                    "prompt": "professional business handshake in modern office building lobby, corporate photography style, confident executives, bright natural lighting, glass windows",
+                    "aspect_ratio": "16:9",
+                    "filename": "business_partnership"
+                }
+            ]
         },
         "messages": [],
         "generated_files": [],

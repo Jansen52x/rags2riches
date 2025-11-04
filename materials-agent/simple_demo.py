@@ -138,7 +138,7 @@ class SimpleMaterialsAgent:
         
         return selected_materials, total_time
     
-    def create_generation_queue(self, selected_materials: List[Dict]) -> List[Dict]:
+    def create_generation_queue(self, selected_materials: List[Dict], user_prompt: Optional[str] = None) -> List[Dict]:
         """Create generation queue with detailed instructions"""
         
         generation_queue = []
@@ -155,13 +155,14 @@ class SimpleMaterialsAgent:
                 "priority": material["priority"],
                 "status": "pending",
                 "created_at": datetime.now().isoformat(),
-                "instructions": self.generate_instructions(material)
+                "user_prompt": user_prompt,
+                "instructions": self.generate_instructions(material, user_prompt)
             }
             generation_queue.append(task)
         
         return generation_queue
     
-    def generate_instructions(self, material: Dict) -> str:
+    def generate_instructions(self, material: Dict, user_prompt: Optional[str] = None) -> str:
         """Generate creation instructions for each material type"""
         
         material_type = material["material_type"]
@@ -182,7 +183,10 @@ class SimpleMaterialsAgent:
             "social_media_post": f"Create social media content for '{title}'. Design for LinkedIn/Twitter with eye-catching visual and concise copy."
         }
         
-        return instructions.get(material_type, f"Create {material_type} for {title}")
+        base = instructions.get(material_type, f"Create {material_type} for {title}")
+        if user_prompt:
+            base += f"\nAdditional creative direction: {user_prompt}"
+        return base
 
 def demo_simple_materials_agent():
     """Run the simplified materials agent demo"""

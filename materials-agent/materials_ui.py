@@ -151,6 +151,12 @@ with st.sidebar:
         height=100,
         help="Describe your client and meeting context"
     )
+
+    creative_prompt = st.text_input(
+        "Creative prompt (optional)",
+        value="",
+        help="Extra guidance for image/video style, e.g. 'cafe theme, warm tones, natural light'"
+    )
     
     st.header("Verified Claims Input")
     
@@ -221,6 +227,7 @@ with col1:
                             session_id=st.session_state.session_id,
                             salesperson_id=salesperson_id,
                             client_context=client_context,
+                            user_prompt=creative_prompt or None,
                             verified_claims=st.session_state.verified_claims,
                             material_recommendations=[],
                             selected_materials=[],
@@ -241,7 +248,7 @@ with col1:
                         agent = SimpleMaterialsAgent()
                         recs = agent.analyze_claims_for_materials(st.session_state.verified_claims, client_context)
                         selected, _total = agent.prioritize_materials(recs, time_limit=120)
-                        queue = agent.create_generation_queue(selected)
+                        queue = agent.create_generation_queue(selected, user_prompt=creative_prompt or None)
                         st.session_state.recommendations = recs
                         st.session_state.selected_materials = selected
                         st.session_state.generation_queue = queue

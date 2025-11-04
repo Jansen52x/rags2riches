@@ -35,5 +35,42 @@ services:
         "pip install --no-cache-dir 'psycopg[binary]' && python /init_db.py",
       ]
 
+  # ChromaDB Vector Database for RAG
+  chromadb:
+    image: chromadb/chroma:0.5.23
+    container_name: chromadb
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+    restart: unless-stopped
+
+  fact-checker-agent:
+    build:
+      context: ./fact-checker-agent
+      dockerfile: Dockerfile
+    container_name: fact-checker-agent
+    depends_on:
+      - postgres
+      - chromadb
+    environment:
+      - POSTGRES_USER=fact-checker
+      - POSTGRES_PASSWORD=fact-checker
+      - POSTGRES_DB=claim_verifications
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - CHROMA_API_HOST=http://chromadb:8000
+      - OLLAMA_HOST=http://host.docker.internal:11434
+
+    ports:
+      - "5001:5001"
+
+    
+    restart: unless-stopped
+
 volumes:
   pg_data:
+  chroma_data:
