@@ -1,20 +1,34 @@
 """
 Main Script for Generating Synthetic Data
 Orchestrates data generation, processing, image generation, PDF generation, and saving to files.
+Now supports multiple documents per company and shared documents.
 """
 import os
 import shutil
 import pandas as pd
+
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
+    load_dotenv(env_path)
+except ImportError:
+    pass  # Will use default values if dotenv not available
+
 from data_generator import generate_synthetic_dataset
 from text_processor import process_dataframe
 from image_generator import generate_all_materials
 from pdf_generator import generate_all_pdf_brochures
+from advanced_document_generator import generate_all_documents_for_company, generate_shared_documents
+from multi_document_generator import generate_document_image, generate_document_pdf
 
 # Get the directory where this script is located (synthetic-data folder)
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
-def main(num_records=75, output_dir='output', generate_images=True, generate_pdfs=True, clean_output=True):
+def main(num_records=75, output_dir='output', generate_images=True, generate_pdfs=True, 
+         clean_output=True, multi_docs_per_company=True, docs_per_company=(5, 10), 
+         generate_partnerships=True, num_partnerships=10):
     """
     Main function to generate, process, and save synthetic data.
     
@@ -24,6 +38,10 @@ def main(num_records=75, output_dir='output', generate_images=True, generate_pdf
         generate_images (bool): Whether to generate marketing images (brochures/flyers)
         generate_pdfs (bool): Whether to generate PDF brochures
         clean_output (bool): Whether to clean/overwrite existing output directory
+        multi_docs_per_company (bool): Generate multiple diverse documents per company
+        docs_per_company (tuple): Min and max number of documents per company
+        generate_partnerships (bool): Generate shared partnership documents
+        num_partnerships (int): Number of partnership documents to create
     """
     # Ensure output_dir is relative to the synthetic-data folder
     if not os.path.isabs(output_dir):
@@ -62,28 +80,113 @@ def main(num_records=75, output_dir='output', generate_images=True, generate_pdf
     preview_df = df_processed[['client_data', 'industry_overview', 'document_text']].head()
     print(preview_df.to_string())
     
-    # Step 5: Generate marketing materials (brochures and flyers)
-    if generate_images:
+    # Step 5: Generate multiple diverse documents per company
+    all_documents = []
+    document_metadata = []
+    
+    if multi_docs_per_company:
+        print("\n" + "="*80)
+        print(f"Generating {docs_per_company[0]}-{docs_per_company[1]} diverse documents per company...")
+        print("="*80)
+        
+        doc_count = 0
+        for idx, row in df_synthetic.iterrows():
+            client_data = row['client_data']
+            documents = generate_all_documents_for_company(client_data, docs_per_company)
+            
+            for doc_idx, doc in enumerate(documents):
+                doc['company_id'] = idx
+                doc['document_id'] = doc_count
+                all_documents.append(doc)
+                doc_count += 1
+            
+            if (idx + 1) % 10 == 0:
+                print(f"  ✓ Generated documents for {idx + 1}/{len(df_synthetic)} companies ({doc_count} total docs)")
+        
+        print(f"✓ Generated {doc_count} documents across {len(df_synthetic)} companies")
+        
+        # Generate partnership documents
+        if generate_partnerships:
+            print(f"\nGenerating {num_partnerships} partnership documents...")
+            all_companies = df_synthetic['client_data'].tolist()
+            partnership_docs = generate_shared_documents(all_companies, num_partnerships)
+            
+            for doc in partnership_docs:
+                doc['company_id'] = -1  # Special ID for shared documents
+                doc['document_id'] = doc_count
+                all_documents.append(doc)
+                doc_count += 1
+            
+            print(f"✓ Generated {len(partnership_docs)} partnership documents")
+    
+    # Step 6: Generate images for all documents
+    if generate_images and multi_docs_per_company:
+        print("\n" + "="*80)
+        print(f"Generating images for {len(all_documents)} documents...")
+        print("="*80)
+        images_dir = os.path.join(output_dir, 'document_images')
+        os.makedirs(images_dir, exist_ok=True)
+        
+        for idx, doc in enumerate(all_documents):
+            doc_type = doc.get('document_type', 'unknown')
+            doc_id = doc.get('document_id', idx)
+            img_path = os.path.join(images_dir, f'{doc_type}_{doc_id:04d}.png')
+            
+            try:
+                generate_document_image(doc, img_path)
+                doc['image_path'] = img_path
+            except Exception as e:
+                print(f"  Warning: Failed to generate image for document {doc_id}: {e}")
+            
+            if (idx + 1) % 50 == 0:
+                print(f"  ✓ Generated {idx + 1}/{len(all_documents)} images")
+        
+        print(f"✓ All document images saved to: {os.path.abspath(images_dir)}")
+    elif generate_images and not multi_docs_per_company:
+        # Original single brochure/flyer generation
         print("\n" + "="*80)
         print("Generating Marketing Materials (Brochures & Flyers)...")
         print("="*80)
         marketing_dir = os.path.join(output_dir, 'marketing_materials')
         df_synthetic = generate_all_materials(df_synthetic, marketing_dir)
     
-    # Step 6: Generate PDF brochures
-    if generate_pdfs:
+    # Step 7: Generate PDFs for all documents
+    if generate_pdfs and multi_docs_per_company:
+        print("\n" + "="*80)
+        print(f"Generating PDFs for {len(all_documents)} documents...")
+        print("="*80)
+        pdfs_dir = os.path.join(output_dir, 'document_pdfs')
+        os.makedirs(pdfs_dir, exist_ok=True)
+        
+        for idx, doc in enumerate(all_documents):
+            doc_type = doc.get('document_type', 'unknown')
+            doc_id = doc.get('document_id', idx)
+            pdf_path = os.path.join(pdfs_dir, f'{doc_type}_{doc_id:04d}.pdf')
+            
+            try:
+                generate_document_pdf(doc, pdf_path)
+                doc['pdf_path'] = pdf_path
+            except Exception as e:
+                print(f"  Warning: Failed to generate PDF for document {doc_id}: {e}")
+            
+            if (idx + 1) % 50 == 0:
+                print(f"  ✓ Generated {idx + 1}/{len(all_documents)} PDFs")
+        
+        print(f"✓ All document PDFs saved to: {os.path.abspath(pdfs_dir)}")
+    elif generate_pdfs and not multi_docs_per_company:
+        # Original single PDF generation
         print("\n" + "="*80)
         print("Generating PDF Brochures...")
         print("="*80)
         pdf_dir = os.path.join(output_dir, 'pdf_brochures')
         df_synthetic = generate_all_pdf_brochures(df_synthetic, pdf_dir)
     
-    # Step 7: Create output directory if it doesn't exist
+    # Step 8: Create output directory if it doesn't exist
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
         print(f"\n✓ Created output directory: {output_dir}")
     
-    # Step 8: Save the data
+    # Step 9: Save the data
     raw_csv_path = os.path.join(output_dir, 'synthetic_data_raw.csv')
     processed_csv_path = os.path.join(output_dir, 'synthetic_data_processed.csv')
     processed_json_path = os.path.join(output_dir, 'synthetic_data_processed.json')
@@ -102,34 +205,62 @@ def main(num_records=75, output_dir='output', generate_images=True, generate_pdf
     df_processed.to_json(processed_json_path, orient='records', indent=2)
     print(f"✓ Saved processed data to: {processed_json_path}")
     
+    # Save all documents metadata
+    if multi_docs_per_company and all_documents:
+        documents_json_path = os.path.join(output_dir, 'all_documents_metadata.json')
+        df_documents = pd.DataFrame(all_documents)
+        df_documents.to_json(documents_json_path, orient='records', indent=2)
+        print(f"✓ Saved documents metadata to: {documents_json_path}")
+    
     print("\n" + "="*80)
     print("DATA GENERATION COMPLETE!")
     print("="*80)
-    print(f"Total records: {len(df_synthetic)}")
+    print(f"Total companies: {len(df_synthetic)}")
+    if multi_docs_per_company:
+        print(f"Total documents generated: {len(all_documents)}")
+        print(f"Average documents per company: {len(all_documents) / len(df_synthetic):.1f}")
     print(f"Output location: {os.path.abspath(output_dir)}")
     print(f"\nAll files are saved under the synthetic-data folder:")
     print(f"  - Data files: {os.path.relpath(output_dir, SCRIPT_DIR)}/")
-    if generate_images:
-        print(f"  - PNG materials: {os.path.relpath(marketing_dir, SCRIPT_DIR)}/")
-    if generate_pdfs:
-        print(f"  - PDF brochures: {os.path.relpath(pdf_dir, SCRIPT_DIR)}/")
+    if multi_docs_per_company:
+        if generate_images:
+            print(f"  - Document images: {os.path.relpath(images_dir, SCRIPT_DIR)}/")
+        if generate_pdfs:
+            print(f"  - Document PDFs: {os.path.relpath(pdfs_dir, SCRIPT_DIR)}/")
+    else:
+        if generate_images:
+            print(f"  - PNG materials: {os.path.relpath(marketing_dir, SCRIPT_DIR)}/")
+        if generate_pdfs:
+            print(f"  - PDF brochures: {os.path.relpath(pdf_dir, SCRIPT_DIR)}/")
     
-    return df_synthetic, df_processed
+    return df_synthetic, df_processed, all_documents if multi_docs_per_company else None
 
 
 if __name__ == "__main__":
-    # Configure parameters here
-    NUM_RECORDS = 75  # Choose a number between 50 and 100
+    # Load configuration from .env file (with fallback defaults)
+    NUM_RECORDS = int(os.environ.get('NUM_COMPANIES', 75))
     OUTPUT_DIR = 'output'  # Output directory relative to synthetic-data folder
-    GENERATE_IMAGES = True  # Set to False to skip image generation
-    GENERATE_PDFS = True    # Set to False to skip PDF generation
-    CLEAN_OUTPUT = True     # Set to False to keep existing files and add new ones
+    GENERATE_IMAGES = os.environ.get('GENERATE_IMAGES', 'true').lower() == 'true'
+    GENERATE_PDFS = os.environ.get('GENERATE_PDFS', 'true').lower() == 'true'
+    CLEAN_OUTPUT = os.environ.get('CLEAN_OUTPUT_ON_START', 'true').lower() == 'true'
+    
+    # Multi-document generation settings
+    MULTI_DOCS_PER_COMPANY = True  # Generate multiple diverse documents per company
+    MIN_DOCS = int(os.environ.get('MIN_DOCS_PER_COMPANY', 5))
+    MAX_DOCS = int(os.environ.get('MAX_DOCS_PER_COMPANY', 10))
+    DOCS_PER_COMPANY = (MIN_DOCS, MAX_DOCS)
+    GENERATE_PARTNERSHIPS = True   # Generate shared partnership documents
+    NUM_PARTNERSHIPS = int(os.environ.get('NUM_PARTNERSHIPS', 10))
     
     # Run the data generation pipeline
-    raw_data, processed_data = main(
+    raw_data, processed_data, documents = main(
         num_records=NUM_RECORDS, 
         output_dir=OUTPUT_DIR, 
         generate_images=GENERATE_IMAGES, 
         generate_pdfs=GENERATE_PDFS,
-        clean_output=CLEAN_OUTPUT
+        clean_output=CLEAN_OUTPUT,
+        multi_docs_per_company=MULTI_DOCS_PER_COMPANY,
+        docs_per_company=DOCS_PER_COMPANY,
+        generate_partnerships=GENERATE_PARTNERSHIPS,
+        num_partnerships=NUM_PARTNERSHIPS
     )

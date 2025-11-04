@@ -6,6 +6,9 @@ from PIL import Image, ImageDraw, ImageFont
 import os
 import random
 import textwrap
+from faker import Faker
+
+fake = Faker()
 
 
 # Color palettes for different designs
@@ -130,7 +133,7 @@ def generate_company_brochure(client_data, output_path, width=800, height=1000):
     font_body = get_default_font(random.choice([16, 18, 20]))
     font_small = get_default_font(random.choice([12, 14, 16]))
     
-    company_name = client_data.get('company_name', 'Company Name')
+    company_name = client_data.get('company_name', fake.company())
     industry = client_data.get('industry', 'Industry')
     
     # Apply layout style
@@ -193,7 +196,7 @@ def generate_company_brochure(client_data, output_path, width=800, height=1000):
     draw.text((margin, y_pos), "ABOUT US", fill=section_text_color, font=font_subtitle)
     y_pos += 40
     
-    description = client_data.get('company_description', 'Company description goes here.')
+    description = client_data.get('company_description', f'{fake.catch_phrase()}. {fake.bs().title()}. {fake.text(max_nb_chars=100)}')
     wrapped_desc = wrap_text(description, font_body, width - 2*margin, draw)
     
     # Vary body text color - 10% chance to use very low contrast
@@ -219,8 +222,8 @@ def generate_company_brochure(client_data, output_path, width=800, height=1000):
     draw.text((margin + 20, y_pos), "CONTACT INFORMATION", fill=palette['accent'], font=font_subtitle)
     y_pos += 50
     
-    contact_person = client_data.get('contact_person', 'Contact Person')
-    contact_email = client_data.get('contact_email', 'email@example.com')
+    contact_person = client_data.get('contact_person', fake.name())
+    contact_email = client_data.get('contact_email', fake.email())
     
     draw.text((margin + 20, y_pos), f"Contact Person: {contact_person}", 
               fill=box_text_color, font=font_body)
@@ -288,7 +291,7 @@ def generate_company_flyer(client_data, output_path, width=600, height=800):
     font_body = get_default_font(random.choice([14, 16, 18]))
     font_cta = get_default_font(random.choice([22, 24, 26]))
     
-    company_name = client_data.get('company_name', 'Company Name')
+    company_name = client_data.get('company_name', fake.company())
     industry = client_data.get('industry', 'Industry')
     
     # Apply layout style to title

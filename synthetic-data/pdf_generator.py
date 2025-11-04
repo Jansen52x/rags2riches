@@ -12,6 +12,9 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
 from reportlab.pdfgen import canvas
 import os
 import random
+from faker import Faker
+
+fake = Faker()
 
 
 # Color schemes for PDF brochures
@@ -205,11 +208,11 @@ def generate_pdf_brochure(client_data, output_path):
         output_path (str): Path to save the PDF file
     """
     # Extract data
-    company_name = client_data.get('company_name', 'Company Name')
-    industry = client_data.get('industry', 'Industry')
-    contact_person = client_data.get('contact_person', 'Contact Person')
-    contact_email = client_data.get('contact_email', 'email@example.com')
-    description = client_data.get('company_description', 'Company description.')
+    company_name = client_data.get('company_name', fake.company())
+    industry = client_data.get('industry', fake.bs())
+    contact_person = client_data.get('contact_person', fake.name())
+    contact_email = client_data.get('contact_email', fake.email())
+    description = client_data.get('company_description', f'{fake.catch_phrase()}. {fake.bs().title()}. {fake.text(max_nb_chars=100)}')
     
     # 20% chance to use challenging color scheme
     if random.random() < 0.2:

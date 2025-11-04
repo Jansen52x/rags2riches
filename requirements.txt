@@ -30,3 +30,4 @@ psycopg
 lxml_html_clean
 faker
 nltk
+google-generativeai  # For Gemini AI integration (optional - Faker is fallback)
