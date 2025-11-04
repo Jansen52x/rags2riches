@@ -22,11 +22,11 @@ moviepy>=1.0.3
 tzdata
 wikipedia
 wikipedia-api
-newspaper3k
-duckduckgo-search
+newspaper4k
 tavily-python>=0.3.6
 newsapi-python
 psycopg
 lxml_html_clean
 faker
 nltk
+ddgs

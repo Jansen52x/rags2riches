@@ -1,8 +1,9 @@
 from langchain_ollama import ChatOllama
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.agents import create_agent
 from langchain.tools import tool
 from langchain_tavily import TavilySearch
-from typing_extensions import TypedDict, List, Optional, Dict
+from typing_extensions import TypedDict, List, Optional, Dict, Annotated
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from langgraph.graph import START, StateGraph, END
@@ -14,10 +15,10 @@ from newsapi import NewsApiClient
 from dotenv import load_dotenv
 import os
 import sys
-from duckduckgo_search import DDGS
-from newspaper import Article
+from ddgs import DDGS
 import uuid
 import psycopg
+from operator import add
 
 # Load variables from secrets.env
 load_dotenv("secrets.env")
@@ -35,9 +36,8 @@ class FactCheckState(TypedDict):
     client_context: Optional[str]
 
     # progressively added fields:
-    search_count: int
     analyzed_claims: List[Dict]
-    claim_verdicts: List[Dict]
+    all_claim_verdicts: Annotated[list[dict], add]
     # optional handoff status
     materials_status: Optional[str]
 
@@ -97,7 +97,7 @@ def analyze_node(state: FactCheckState) -> Command:
         # fallback in case the LLM outputs plain text instead of valid JSON
         claims_list = response
 
-    print("Claim analysis complete.")
+    print(f"Claim analysis complete for claim")
 
     return Command(
         update={"analyzed_claims": claims_list}
@@ -107,143 +107,141 @@ def analyze_node(state: FactCheckState) -> Command:
 
 # region Search + Evaluate for result
 def fan_out_searches(state: FactCheckState) -> Command:
-    """Run searches sequentially within this node and accumulate verdicts.
-
-    This avoids concurrency/recursion complexity and returns a single update
-    with all claim_verdicts populated.
-    """
-    claims = state.get("analyzed_claims", [])
-
-    gathered: list[dict] = []
-
-    for sc in claims:
-        try:
-            claim = sc["claim"]
-            strategy = sc["analysis"]
-        except Exception:
-            # Skip malformed entries
-            continue
-
-        prompt = f"""
-    You are fact-checking this claim: {claim}
-
-    An LLM before you has analyzed this claim and determined that you need:
-    - {strategy['num_sources_needed']} credible sources at minimum
-    - to prioritise these source types: {', '.join(strategy['source_types'])}
-    - to focus on these types of information: {', '.join(strategy['focus_areas'])}
+    """Create a search task for each subclaim, allowing for parallel execution"""
     
-    Your job is to formulate an appropriate search query, find the best sources to fact-check this claim, 
-    and provide a verdict of the claim's credibility based on the sources found.
+    claims = state["analyzed_claims"]
+    print(f"Fanning out searches for {len(claims)} claims...")
 
-    You may continue searching until you feel confident of a verdict, but you may only search up to a maximum of 3 searches. This is a HARD LIMIT.
-    
-    Make sure you critically evaluate the sources for credibility and relevance.
-
-    You must also decide on the next step to take, by determining if the claim is suitable to be passed to a materials agent that generates presentation materials based on this claim.
-
-    Typically, claims that are FALSE or CANNOT BE DETERMINED should not be passed to the materials agent.
-    However, if you believe that the claim can be used with caveats, you may continue to pass it to the materials agent.
-
-    Thereafter, provide all your findings and decision as JSON output in this format:
-    {{
-        overall_verdict: [TRUE / FALSE / CANNOT BE DETERMINED], 
-        explanation: str, 
-        main_evidence: list of dicts with 'source' and 'summary', # describing the key sources used to make your verdict, with a 1 line short summary
-        pass_to_materials_agent: [TRUE / FALSE]
-    }}
-
-    Do not provide any extra text or Python code outside of the JSON output.
-    """
-
-        response = agent.invoke({"messages": [{"role": "user", "content": prompt}]})
-
-        try:
-            content = response.get("results") or response
-            if isinstance(content, str):
-                current_result = json.loads(content)
-            elif isinstance(content, dict) and "output" in content:
-                current_result = json.loads(content["output"])  # heuristic
-            else:
-                current_result = json.loads(str(content))
-        except Exception as e:
-            current_result = {
-                "overall_verdict": "CANNOT BE DETERMINED",
-                "explanation": f"Parse error: {e}",
-                "main_evidence": [],
-                "pass_to_materials_agent": False,
-            }
-
-        print(current_result)
-        gathered.append(current_result)
-        print(f"Search complete for {claim}.")
-
-    return Command(update={"claim_verdicts": gathered})
+    # Provide 1 search instance per claim and add 1 "fanned out search" to the search count
+    return Command(
+        goto=[
+            Send("search_single_claim", {
+                "claim": sc['claim'], 
+                "analysis": sc['analysis']
+            })
+            for sc in claims
+        ]
+    )
 
 def search_single_claim(state: FactCheckState) -> Command:
     """Search for ONE claim with its strategy"""
     claim = state['claim']
     strategy = state['analysis']
+
+    print(f"Starting search for claim: {claim}")
     
     prompt = f"""
     You are fact-checking this claim: {claim}
-
-    An LLM before you has analyzed this claim and determined that you need:
+    You need:
     - {strategy['num_sources_needed']} credible sources at minimum
     - to prioritise these source types: {', '.join(strategy['source_types'])}
     - to focus on these types of information: {', '.join(strategy['focus_areas'])}
     
-    Your job is to formulate an appropriate search query, find the best sources to fact-check this claim, 
-    and provide a verdict of the claim's credibility based on the sources found.
-
-    You may continue searching until you feel confident of a verdict, but you may only search up to a maximum of 3 searches. This is a HARD LIMIT.
+    You are given a set of tools that allow you to search the web and find the best sources to fact-check this claim. 
+    You MUST use these tools and their output as a base to formulate your claim
+    You may also query the RAG system that provided this claim in the first place if the web search does not yield sufficient information
+    You may use the tools as many times as needed to make a verdict, or to determine that you cannot make a verdict.
+    Make your queries simple so that it is easy to get relevant results, then be more specific if there are too many. 
+    Do not call the same tool with the same query as it will definitely give you the same results.
     
-    Make sure you critically evaluate the sources for credibility and relevance.
+    Be sure to evaluate the sources for credibility and relevance.
+    
+    Provide your verdict with the following information:
+    1. Overall Verdict: TRUE, FALSE, or CANNOT BE DETERMINED
+    2. Explanation: A concise explanation of how you arrived at the verdict
 
-    You must also decide on the next step to take, by determining if the claim is suitable to be passed to a materials agent that generates presentation materials based on this claim.
-
-    Typically, claims that are FALSE or CANNOT BE DETERMINED should not be passed to the materials agent.
-    However, if you believe that the claim can be used with caveats, you may continue to pass it to the materials agent.
-
-    Thereafter, provide all your findings and decision as JSON output in this format:
-    {{
-        overall_verdict: [TRUE / FALSE / CANNOT BE DETERMINED], 
-        explanation: str, 
-        main_evidence: list of dicts with 'source' and 'summary', # describing the key sources used to make your verdict, with a 1 line short summary
-        pass_to_materials_agent: [TRUE / FALSE]
-    }}
-
-    Do not provide any extra text or Python code outside of the JSON output.
+    If you cannot make a claim based on the sources then just say "CANNOT BE DETERMINED". An absence of evidence does not necessarily mean it's false, so think critically.
     """
     
     response = agent.invoke(
         {"messages": [{"role": "user", "content": prompt}]}
     )
-
     print(response)
-    # Expect response to include an LLM-generated JSON string
-    try:
-        content = response.get("results") or response
-        if isinstance(content, str):
-            current_claim_result = json.loads(content)
-        elif isinstance(content, dict) and "output" in content:
-            current_claim_result = json.loads(content["output"])  # heuristic
-        else:
-            # last resort: try to stringify and parse
-            current_claim_result = json.loads(str(content))
-    except Exception as e:
-        current_claim_result = {"overall_verdict": "CANNOT BE DETERMINED", "explanation": f"Parse error: {e}", "main_evidence": [], "pass_to_materials_agent": False}
-    print(current_claim_result)
-    all_claim_verdicts = list(state.get('claim_verdicts', []))
-    all_claim_verdicts.append(current_claim_result)
+
+    tools_evidence = []
+
+    messages = response.get('messages')
+    
+    # --- Part 1: Get the Verdict and Explanation ---
+    # Find the *last* AIMessage that has non-empty content
+    for msg in reversed(messages):
+        # Check type by class name (to avoid import issues)
+        if msg.__class__.__name__ == 'AIMessage' and msg.content:
+            final_ai_message_content = msg.content
+            break
+
+    # --- Part 2: Get the Tools Used (Evidence) ---
+    tool_calls = []
+    # Use a dict to map responses back to calls by their unique ID
+    tool_responses = {} 
+    
+    for msg in messages:
+        # Find the message with the tool *calls*
+        if msg.__class__.__name__ == 'AIMessage' and hasattr(msg, 'tool_calls') and msg.tool_calls:
+            # msg.tool_calls is a list of dicts
+            tool_calls.extend(msg.tool_calls)
+        
+        # Find the messages with tool *responses*
+        if msg.__class__.__name__ == 'ToolMessage':
+            # msg.tool_call_id links it to the original call
+            tool_responses[msg.tool_call_id] = msg.content
+    
+    # Now, combine them into a single evidence log
+    for call in tool_calls:
+        call_id = call.get('id')
+        tools_evidence.append({
+            "tool_called": call.get('name'),
+            "tool_input": call.get('args'),
+            "tool_output": tool_responses.get(call_id, "No response found for this call")
+        })
 
     print(f"Search complete for {claim}.")
+    return Command(
+        goto=Send("process_search_result", {
+                "raw_verdict": final_ai_message_content,
+                "evidence_log": tools_evidence
+            })
+    )
 
-    # If there are still remaining claims, loop back to 'search' to dispatch the next
-    has_more = bool(state.get("remaining_claims"))
-    if has_more:
-        return Command(update={"claim_verdicts": all_claim_verdicts}, goto="search")
-    else:
-        return Command(update={"claim_verdicts": all_claim_verdicts})
+def process_search_result(state: FactCheckState) -> Command:
+    """Process the result from search_single_claim and update the claim_verdicts list"""
+    raw_verdict = state.get("raw_verdict", {})
+    evidence_log = state.get("evidence_log", [])
+    print("Processing search result")
+    prompt = f"""
+    Verdict: {raw_verdict}
+    Evidence Log: {json.dumps(evidence_log, indent=2)}
+
+    Given this verdict from the agent, determine if the claim should be passed onto a materials generation agent that creates sales presentation materials.
+    Typically, false claims should not be passed on, while true claims can be, as you won't want to create materials based on false information.
+    However, if you believe certain caveats can be used to present the claim accurately, you may choose to pass it on with appropriate notes.
+    At the same time, extract the info in the following JSON format:
+    {{
+        "overall_verdict": "<TRUE/FALSE/CANNOT BE DETERMINED>",
+        "explanation": "<concise explanation>",
+        "main_evidence": [
+            {{
+                "source": "<actual source name or URL>",
+                "summary": "<one line summary of the evidence>"
+            }},
+            ...
+        ],
+        "pass_to_materials_agent": <true/false>
+    }}
+    
+    Do not provide any other text outside the JSON block. Do not write code.
+    """
+
+    response = llm.invoke(prompt).content
+    try:
+        current_claim_result = json.loads(response)
+    except json.JSONDecodeError:
+        # fallback in case the LLM outputs plain text instead of valid JSON
+        current_claim_result = response
+
+    print("Processed search result for claim.")
+    print(current_claim_result)
+    return {"all_claim_verdicts": [current_claim_result]}
 
 #endregion
 
@@ -260,6 +258,7 @@ def save_to_db(state: FactCheckState) -> Command:
 
     """
 
+    print("Saving verdicts to database...")
     verdicts = state["claim_verdicts"]
     salesperson_id = state.get("salesperson_id")
     claim_id = state.get("claim_id")
@@ -352,52 +351,39 @@ def pass_to_materials(state: FactCheckState) -> Command:
 #endregion
 
 # region TOOLS
-@tool
-def tavily_search_tool(query: str) -> str: # Tested independently
-    """Use Tavily to search the web for information. This outputs an answer as well as the sources used.
-    Use sparingly as there are rate limits, and take answer given by Tavily as a guide, not absolute truth. You may
-    utilise the sources used to make your own judgement. 
-
-    Input: Search query string
-    Output: Search results from Tavily including Tavily's LLM answer and sources
+@tool 
+def get_wikipedia_page_name(query: str) -> list:
+    """ Get a list of Wikipedia page titles for a given query. Use this to find the name of relevant wikipedia pages, then use the 'search_wikipedia' tool to get summaries.
+        Input: A search query (e.g. Python)
+        Output: A list of page titles (e.g. Python (programming language), Pythonidae, Monty Python)
     """
-    search = TavilySearch(max_results=5)
-    results = search.run(query)
-    return results
+    print("Getting Wikipedia page titles...")
+    search_results = wikipedia.search(query, results=10)
+    return search_results
 
 @tool
-def search_wikipedia_for_page_title(query: str) -> str: # Tested independently
-    """Search Wikipedia for page titles related to the query
-    Input: Search query string
-    Output: List of relevant Wikipedia page titles
+def search_wikipedia(page_title: str) -> str: # Tested independently
+    """Parse the specified wikipedia page for a summary of the page 
+    Input: A valid (exact) wikipedia page title
+    Output: Summary of the requested Wikipedia page
     """
-    search_results = wikipedia.search(query)
-    if search_results:
-        return search_results  # Return the title of the first search result
-    else:
-        return "No relevant Wikipedia page found."
-
-@tool
-def parse_wikipedia_page(page_title: str) -> str: # Tested independently
-    """Parse a wikipedia page for the full text
-    Input: Valid wikipedia page title
-    Output: Full text of the wikipedia page
-    """
-    wiki = wikipediaapi.Wikipedia('en')
+    print("Searching Wikipedia")
+    wiki = wikipediaapi.Wikipedia(user_agent='Rags2Riches-Bot/0.0 (locally-run; yongray.teo.2022@scis.smu.edu.sg)', language='en')
     page = wiki.page(page_title)
     if page.exists():
-        return page.text  # Return first 1000 characters for brevity
+        return page.summary
     else:
         return "Page does not exist."
     
-
 @tool
 def get_news_articles(query: str) -> list: # Tested independently
-    """ Fetch news articles related to the query using NewsAPI
+    """ Fetch news articles related to the query via NewsAPI.
+    Each call to this tool will return you up to 10 news articles. Do not call it multiple times unless you intend to change the query.
+    This tool will only return news articles - it may not be able to find other sources like statistical reports or sentiment.
     Input: A search query
     Output: A list of news articles with title, source, description, and URL
     """
-    
+    print("Performing News API search...")
     news_api_key = os.getenv("NEWS_API_KEY")
 
     # Init
@@ -424,41 +410,33 @@ def get_news_articles(query: str) -> list: # Tested independently
 
 @tool 
 def duckduckgo_search_text(query:str) -> str: # Tested independently
-    """ Perform a DuckDuckGo search for textual results
+    """ Perform a search on the DuckDuckGo search engine on the web for textual results.
+    This might provide you more sources aside from just news articles.
     Input: Search query
     Output: Search results from DDG, with title, href link, and brief body. 
     """
+    print("Performing DuckDuckGo search for text...")
     results = DDGS().text(query, max_results=10)
     return results
 
-@tool 
-def duckduckgo_search_news(query:str) -> str: # Tested independently
-    """ Perform a DuckDuckGo search for news
-    Input: Search query
-    Output: News search results from DDG, with source, date, title, url link, and brief body.
-    """
-    results = DDGS().news(keywords=query, max_results=10)
-    return results
-
 @tool
-def scrape_webpage(url: str) -> str: # Tested independently
-    """ Scrape the content of a webpage given its URL
-    Input: URL of the webpage
-    Output: Text content of the webpage
-    """
+def tavily_search(query:str) -> str:
+    """Use Tavily to search the web, it will retrieve sources and output an answer as well as the sources used.
+    Use sparingly as there are rate limits, and take answer given by Tavily as a guide, not absolute truth. You may
+    utilise the sources used to make your own judgement. 
 
-    try:
-        article = Article(url)
-        article.download()
-        article.parse()
-        return article.text
-    except Exception as e:
-        return f"Error scraping {url}: {e}"
+    Input: Search query string
+    Output: Search results from Tavily including Tavily's LLM answer and sources
+    """
+    print("Performing Tavily search...")
+    search = TavilySearch(max_results=5)
+    results = search.run(query)
+    return results
 
 @tool
 def query_rag_system(refined_query: str) -> str: # Not yet implemented
     """
-    Query the RAG system for claim clarification or additional context.
+    Queries the RAG system if the information on the web is insufficient to make an informed verdict.
 
     Input: A refined or new query
         
@@ -473,14 +451,16 @@ def query_rag_system(refined_query: str) -> str: # Not yet implemented
 # region Setup
 # Creating search agent
 llm = ChatOllama(model="llama3.2:3b", temperature=0)
-tools = [tavily_search_tool, duckduckgo_search_text, duckduckgo_search_news, search_wikipedia_for_page_title, parse_wikipedia_page, get_news_articles, #Search
-         
-         ] # Agent needs the search tools, the scraper, the redirect tools etc.
-agent = create_agent(llm, tools)
+# bigLM = ChatOllama(model="qwen3:4b", temperature=0)
+bigLM = ChatGoogleGenerativeAI(model="gemini-2.5-pro", temperature=0)
+tools = [duckduckgo_search_text, tavily_search, search_wikipedia, get_news_articles, query_rag_system] # Agent needs the search tools, the scraper and the RAG query tool
+agent = create_agent(bigLM, tools)
 
 # Example Claim
-claim = "By 2023, Singapore’s e-commerce market reached SGD 9 billion in sales, with Shopee leading in market share, while over 80% of consumers reported shopping online at least once a month."
-client_context = "The client is a small e-commerce startup in Singapore"
+claim = "Shopee was leading in market share in 2023"
+# claim = "By 2023, Singapore’s e-commerce market reached SGD 9 billion in sales, with Shopee leading in market share, while over 80% of consumers reported shopping online at least once a month."
+# client_context = "The client is a small e-commerce startup in Singapore"
+client_context = ""
 
 sg_time = datetime.now(ZoneInfo("Asia/Singapore"))
 timestamp = sg_time.replace(microsecond=0).isoformat()
@@ -490,7 +470,6 @@ initial_state = FactCheckState(
     original_claim=claim,
     salesperson_id="SP12345",
     client_context=client_context,
-    search_count=0,
     analyzed_claims=[],
     claim_verdicts=[]
 )
@@ -501,13 +480,14 @@ graph =  StateGraph(FactCheckState)
 graph.add_node("analyze", analyze_node)
 graph.add_node("search", fan_out_searches)
 graph.add_node("search_single_claim", search_single_claim)
+graph.add_node("process_search_result", process_search_result)
 graph.add_node("save", save_to_db)
 graph.add_node("pass_to_materials", pass_to_materials)
 
 # add edges to graph
 graph.add_edge(START, "analyze")
 graph.add_edge("analyze", "search")
-graph.add_edge("search", "save")
+graph.add_edge("search_single_claim", "save")
 graph.add_edge("save", "pass_to_materials")
 graph.add_edge("pass_to_materials", END)
 
