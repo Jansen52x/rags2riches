@@ -9,9 +9,12 @@ from content_generator import ContentGenerator
 # Initialize generator
 generator = ContentGenerator()
 
-# Create directory for AI-generated images
-AI_IMAGE_DIR = Path("generated_content/ai_images")
+# Create directory for AI-generated images using absolute path
+# Get the directory where this file (content_tools.py) is located
+TOOLS_DIR = Path(__file__).parent
+AI_IMAGE_DIR = TOOLS_DIR / "generated_content" / "ai_images"
 AI_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+print(f"🔧 AI_IMAGE_DIR set to: {AI_IMAGE_DIR.absolute()}")
 
 @tool
 def generate_market_share_chart(data: str) -> str:
@@ -294,7 +297,9 @@ def generate_ai_image(data: str) -> str:
         
         # Validate required field
         if "prompt" not in data_dict:
-            return "❌ Error: 'prompt' field is required"
+            error_msg = "❌ Error: 'prompt' field is required"
+            print(error_msg)
+            return error_msg
         
         # Prepare input for Replicate
         replicate_input = {
@@ -304,18 +309,35 @@ def generate_ai_image(data: str) -> str:
         }
         
         print(f"🎨 Generating AI image with prompt: '{data_dict['prompt'][:60]}...'")
+        print(f"   Input: {replicate_input}")
         
         # Run Replicate model
-        output = replicate.run(
-            "google/imagen-4",
-            input=replicate_input
-        )
+        try:
+            output = replicate.run(
+                "google/imagen-4",
+                input=replicate_input
+            )
+            print(f"   ✓ Replicate API call successful")
+        except Exception as replicate_error:
+            error_msg = f"❌ Replicate API error: {str(replicate_error)}"
+            print(error_msg)
+            import traceback
+            traceback.print_exc()
+            return error_msg
         
         # Handle both single URL and list of URLs
+        # Replicate returns a FileOutput object with a .url attribute
         if isinstance(output, list):
             image_url = output[0]
         else:
             image_url = output
+        
+        # Extract URL from FileOutput object if needed
+        if hasattr(image_url, 'url'):
+            print(f"   ✓ Output is FileOutput object, extracting URL...")
+            image_url = image_url.url
+        
+        print(f"   ✓ Image URL received: {str(image_url)[:80]}...")
         
         # Generate filename
         if "filename" in data_dict:
@@ -325,26 +347,52 @@ def generate_ai_image(data: str) -> str:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"ai_image_{timestamp}.png"
         
+        print(f"   → Filename: {filename}")
+        
         # Full path
         file_path = AI_IMAGE_DIR / filename
+        print(f"   → Full path: {file_path}")
         
         # Download the image
-        response = requests.get(image_url)
-        response.raise_for_status()
+        try:
+            print(f"   → Downloading image...")
+            response = requests.get(image_url, timeout=30)
+            response.raise_for_status()
+            print(f"   ✓ Download successful ({len(response.content)} bytes)")
+        except Exception as download_error:
+            error_msg = f"❌ Error downloading image: {str(download_error)}"
+            print(error_msg)
+            import traceback
+            traceback.print_exc()
+            return error_msg
         
-        with open(file_path, "wb") as f:
-            f.write(response.content)
+        # Save the image
+        try:
+            print(f"   → Saving to disk...")
+            with open(file_path, "wb") as f:
+                f.write(response.content)
+            print(f"   ✓ Saved to: {file_path}")
+        except Exception as save_error:
+            error_msg = f"❌ Error saving image: {str(save_error)}"
+            print(error_msg)
+            import traceback
+            traceback.print_exc()
+            return error_msg
         
-        return f"✅ Generated AI image: {file_path}\nPrompt: {data_dict['prompt']}"
+        success_msg = f"✅ Generated AI image: {file_path}\nPrompt: {data_dict['prompt']}"
+        print(success_msg)
+        return success_msg
         
-    except replicate.exceptions.ReplicateError as e:
-        return f"❌ Replicate API error: {str(e)}"
-    except requests.exceptions.RequestException as e:
-        return f"❌ Error downloading image: {str(e)}"
     except json.JSONDecodeError as e:
-        return f"❌ Invalid JSON format: {str(e)}"
+        error_msg = f"❌ Invalid JSON format: {str(e)}"
+        print(error_msg)
+        return error_msg
     except Exception as e:
-        return f"❌ Error generating AI image: {str(e)}"
+        error_msg = f"❌ Unexpected error in generate_ai_image: {str(e)}"
+        print(error_msg)
+        import traceback
+        traceback.print_exc()
+        return error_msg
 
 
 # List of all available tools

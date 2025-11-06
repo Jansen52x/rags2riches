@@ -26,11 +26,19 @@ def planning_node(state: ContentAgentState) -> ContentAgentState:
     
     context = state["context"]
     data_available = state["data_available"]
+
+    # Check if we have pre-specified materials from materials agent
+    chart_specs = data_available.get("chart_specifications", [])
+    ai_image_prompts = data_available.get("ai_image_prompts", [])
     
     system_prompt = """You are a sales content generation specialist. 
+
+If chart_specifications are provided, create those specific charts.
+If ai_image_prompts are provided, generate those images.
+If you have both data and flexibility, make decisions about the best visualizations.
     
-Your job is to analyze the meeting context and available data, then create 
-a comprehensive set of visualizations for the sales meeting.
+Your job is to analyze the meeting context, specifications if provided, and available data, then create 
+a comprehensive set of visualizations for the sales meeting using the appropriate tools for each type of content.
 
 Available tools:
 - generate_market_share_chart: For showing market share distribution (static PNG)
@@ -113,19 +121,38 @@ def finalize_node(state: ContentAgentState) -> ContentAgentState:
     for message in state.get("messages", []):
         content = str(message.content) if hasattr(message, "content") else str(message)
         
+        # Debug: Print message content
+        if "Generated" in content or "generated" in content:
+            print(f"   DEBUG - Message: {content[:200]}")
+        
         # Look for successful generation messages (both images and videos)
-        if "✅ Generated" in content:
-            # Extract file paths for both PNG and MP4 files
+        if "✅ Generated" in content or "✅" in content:
+            # Extract file paths - try multiple patterns
             import re
+            
+            # Pattern 1: generated_content/...
             png_match = re.search(r'generated_content/[^\s]+\.png', content)
             mp4_match = re.search(r'generated_content/[^\s]+\.mp4', content)
             
+            # Pattern 2: ai_images/...
+            ai_image_match = re.search(r'generated_content/ai_images/[^\s]+\.png', content)
+            
+            # Pattern 3: Any .png or .mp4 file path
+            general_file_match = re.search(r'[^\s]+\.(png|mp4)', content)
+            
             if png_match:
                 generated_files.append(png_match.group(0))
-            if mp4_match:
+            elif mp4_match:
                 generated_files.append(mp4_match.group(0))
+            elif ai_image_match:
+                generated_files.append(ai_image_match.group(0))
+            elif general_file_match:
+                generated_files.append(general_file_match.group(0))
     
     print(f"   Found {len(generated_files)} generated files")
+    if generated_files:
+        for f in generated_files:
+            print(f"      - {f}")
     
     return {
         **state,

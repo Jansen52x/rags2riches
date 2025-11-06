@@ -11,7 +11,14 @@ class ContentGenerator:
     """Generates charts, images, and visualizations for sales meetings"""
     
     def __init__(self, output_dir: str = "generated_content"):
-        self.output_dir = Path(output_dir)
+        # Use absolute path relative to this file's location
+        # This ensures content is saved in image-video-agent/generated_content
+        # regardless of where the script is run from
+        if not Path(output_dir).is_absolute():
+            generator_dir = Path(__file__).parent
+            self.output_dir = generator_dir / output_dir
+        else:
+            self.output_dir = Path(output_dir)
         self.output_dir.mkdir(exist_ok=True)
         
     def generate(self, spec: Dict[str, Any]) -> str:

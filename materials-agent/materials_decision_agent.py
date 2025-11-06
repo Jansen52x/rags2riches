@@ -1,5 +1,4 @@
 from langchain_ollama import ChatOllama
-from langchain.agents import create_agent
 from langchain.tools import tool
 from typing_extensions import TypedDict, List, Optional, Dict, Literal
 from datetime import datetime
@@ -11,6 +10,16 @@ import uuid
 import psycopg
 from dataclasses import dataclass
 from enum import Enum
+import sys
+from pathlib import Path
+
+# Add image-video-agent directory to Python path
+image_video_agent_path = Path(__file__).parent.parent / "image-video-agent"
+sys.path.insert(0, str(image_video_agent_path))
+
+# Now import from image-video-agent
+from content_generation_agent import create_content_generation_agent
+
 
 # State definitions
 class MaterialType(str, Enum):
@@ -190,7 +199,7 @@ def analyze_claims_for_materials(state: MaterialsDecisionState) -> Command:
     Recommend 3-6 materials maximum. Focus on quality and impact over quantity.
     """
     
-    llm = ChatOllama(model="llama3.2:3b", temperature=0.3)
+    llm = ChatOllama(model="qwen3:0.6b", temperature=0.3)
     response = llm.invoke(prompt).content
 
     # Try robust parsing first
@@ -394,16 +403,132 @@ def save_materials_decision(state: MaterialsDecisionState) -> Command:
         print(f"Error saving materials decision: {e}")
         return Command(update={"status": "save_failed"})
 
-# Tools for integration with other agents
 @tool
-def trigger_image_generation(material_specs: str) -> str:
-    """Trigger image generation agent with material specifications
+def trigger_content_generation(generation_queue: str) -> str:
+    """Trigger content generation agent with material specifications
     
-    Input: JSON string with material specifications
-    Output: Generation task ID or status
+    Input: JSON string with generation queue containing material specs
+    Output: Generated file paths and status
     """
+    try:
+        queue = json.loads(generation_queue)
+        
+        print(f"\n📋 Generation Queue received ({len(queue)} items):")
+        for i, item in enumerate(queue, 1):
+            print(f"   {i}. {item.get('title')} ({item.get('material_type')})")
+        
+        # Convert materials queue to content agent format
+        input_state = convert_queue_to_agent_input(queue)
+        
+        print(f"\n🔄 Converted input state:")
+        print(f"   AI Image Prompts: {len(input_state['data_available'].get('ai_image_prompts', []))}")
+        print(f"   Chart Specs: {len(input_state['data_available'].get('chart_specifications', []))}")
+        print(json.dumps(input_state, indent=2))
+        
+        # Create and invoke agent
+        agent = create_content_generation_agent()
+        result = agent.invoke(input_state)
+        
+        return json.dumps({
+            "status": "success",
+            "generated_files": result.get("generated_files", []),
+            "generation_count": len(result.get("generated_files", []))
+        })
+        
+    except Exception as e:
+        print(f"\n❌ Error in trigger_content_generation: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return json.dumps({
+            "status": "error",
+            "message": str(e)
+        })
 
-    return f"Image generation queued with task ID: {uuid.uuid4()}"
+def convert_queue_to_agent_input(queue: List[Dict]) -> Dict:
+    """Convert materials queue to content generation agent input format"""
+    
+    # Extract different material types
+    chart_specs = []
+    ai_image_prompts = []
+    video_specs = []
+    
+    for item in queue:
+        # The queue uses "type" not "material_type"
+        material_type = item.get("type")
+        
+        print(f"   Processing: {item.get('title')} - Type: {material_type}")
+        
+        if material_type in ["chart", "slide"]:
+            # Convert to chart specification
+            chart_specs.append({
+                "type": determine_chart_type(item),
+                "title": item.get("title"),
+                "data": extract_data_from_claims(item)
+            })
+            
+        elif material_type in ["infographic"]:
+            # Convert to AI image prompt
+            ai_image_prompts.append({
+                "prompt": generate_infographic_prompt(item),
+                "aspect_ratio": "16:9",
+                "filename": item.get("material_id")
+            })
+            
+        elif material_type in ["video_explainer", "presentation_deck"]:
+            video_specs.append(item)
+    
+    # Build content agent input
+    return {
+        "context": {
+            "meeting_type": "materials_generation",
+            "client_name": queue[0].get("client_context", "Client") if queue else "Client",
+            "sales_objectives": ["Create requested materials"]
+        },
+        "data_available": {
+            "chart_specifications": chart_specs,
+            "ai_image_prompts": ai_image_prompts,
+            "video_specifications": video_specs
+        },
+        "messages": [],
+        "generated_files": [],
+        "errors": []
+    }
+def determine_chart_type(material_spec: Dict) -> str:
+    """Determine chart type from material specification"""
+    title = material_spec.get("title", "").lower()
+    description = material_spec.get("description", "").lower()
+    
+    if "market share" in title or "market share" in description:
+        return "market_share"
+    elif "swot" in title:
+        return "swot_analysis"
+    elif "growth" in title or "trend" in title:
+        return "growth_trend"
+    elif "competitive" in title or "positioning" in title:
+        return "competitive_matrix"
+    else:
+        return "market_share"  # default
+
+def extract_data_from_claims(material_spec: Dict) -> Dict:
+    """Extract data from claims for chart generation"""
+    claims = material_spec.get("claim_references", [])
+    # Parse claims to extract structured data
+    # This would need to be more sophisticated in practice
+    return {
+        "companies": ["Company A", "Company B", "Company C"],
+        "market_share": [35, 30, 25]
+    }
+
+def generate_infographic_prompt(material_spec: Dict) -> str:
+    """Generate AI image prompt from infographic specification"""
+    title = material_spec.get("title", "")
+    description = material_spec.get("description", "")
+    requirements = material_spec.get("content_requirements", {})
+    
+    style = requirements.get("style", "professional")
+    color_scheme = requirements.get("color_scheme", "corporate")
+    
+    return f"{title}: {description}, {style} style, {color_scheme} colors, high quality infographic design"
 
 @tool
 def trigger_video_generation(material_specs: str) -> str:
@@ -430,6 +555,23 @@ def get_client_preferences(client_id: str) -> str:
         "visual_preference": "data_heavy"
     })
 
+def trigger_generation_node(state: MaterialsDecisionState) -> Command:
+    """Trigger content generation for approved materials"""
+    
+    generation_queue = state.get("generation_queue", [])
+    
+    if not generation_queue:
+        return Command(update={"status": "no_materials_to_generate"})
+    
+    # Trigger content generation
+    result = trigger_content_generation(json.dumps(generation_queue))
+    result_data = json.loads(result)
+    
+    return Command(update={
+        "generation_status": result_data.get("status"),
+        "generated_files": result_data.get("generated_files", [])
+    })
+
 # Setup function for testing
 def create_materials_decision_workflow():
     """Create and return the materials decision workflow"""
@@ -441,13 +583,15 @@ def create_materials_decision_workflow():
     graph.add_node("analyze_claims", analyze_claims_for_materials)
     graph.add_node("prioritize", prioritize_materials)
     graph.add_node("create_queue", create_generation_queue)
+    graph.add_node("trigger_generation", trigger_generation_node)
     graph.add_node("save_decision", save_materials_decision)
     
     # Add edges
     graph.add_edge(START, "analyze_claims")
     graph.add_edge("analyze_claims", "prioritize")
     graph.add_edge("prioritize", "create_queue")
-    graph.add_edge("create_queue", "save_decision")
+    graph.add_edge("create_queue", "trigger_generation")  # NEW
+    graph.add_edge("trigger_generation", "save_decision")
     graph.add_edge("save_decision", END)
     
     return graph.compile()
