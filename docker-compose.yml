@@ -50,8 +50,8 @@ services:
 
   fact-checker-agent:
     build:
-      context: ./fact-checker-agent
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: fact-checker-agent/Dockerfile
     container_name: fact-checker-agent
     depends_on:
       - postgres
@@ -67,8 +67,6 @@ services:
 
     ports:
       - "5001:5001"
-
-    
     restart: unless-stopped
 
 volumes:
