@@ -117,11 +117,8 @@ services:
   #     - POSTGRES_PORT=5432
   #     - CHROMA_API_HOST=http://chromadb:8000
   #     - OLLAMA_HOST=http://host.docker.internal:11434
-
   #   ports:
   #     - "5001:5001"
-
-    
   #   restart: unless-stopped
 
 volumes:
