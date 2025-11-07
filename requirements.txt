@@ -22,12 +22,18 @@ moviepy>=1.0.3
 tzdata
 wikipedia
 wikipedia-api
-newspaper4k
+newspaper3k
 tavily-python>=0.3.6
 newsapi-python
 psycopg
 lxml_html_clean
 faker
 nltk
-google-generativeai  # For Gemini AI integration (optional - Faker is fallback)
+google-generativeai
 ddgs
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+numpy<2.0
+openai>=1.12.0
+pydantic==2.5.0
+pydantic-settings==2.1.0

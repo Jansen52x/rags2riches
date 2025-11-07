@@ -27,3 +27,4 @@ data/uploads/
 
 # Old RAG system (deprecated)
 rag/vector_db/
+rag/data/
