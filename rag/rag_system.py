@@ -16,18 +16,15 @@ from langchain_core.documents import Document
 # Configuration
 VECTOR_DB_PATH = "vector_db"
 DATA_DIR = "data"
-
-# Optimized for business reports (longer context, more overlap for coherence)
-CHUNK_SIZE = 1500  # Larger chunks to capture complete ideas/sections
-CHUNK_OVERLAP = 300  # Higher overlap to maintain context continuity
+CHUNK_SIZE = 1500
+CHUNK_OVERLAP = 300
 
 EMBEDDING_MODEL_NAME = "BAAI/bge-small-en-v1.5"
-RERANKER_MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L-6-v2"  # Semantic re-ranker
+RERANKER_MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 LLM_MODEL = "llama3:8b"
 
-# Retrieval parameters
-INITIAL_K = 10  # Retrieve more documents initially
-RERANK_TOP_K = 5  # Return top 5 after re-ranking
+INITIAL_K = 10
+RERANK_TOP_K = 5
 
 
 class SemanticReranker:
