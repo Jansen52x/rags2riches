@@ -48,11 +48,44 @@ services:
       - ANONYMIZED_TELEMETRY=FALSE
     restart: unless-stopped
 
-  fact-checker-agent:
+  # pgAdmin - PostgreSQL Web UI
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+  streamlit_service:
     build:
-      context: ./fact-checker-agent
+      context: ./streamlit
       dockerfile: Dockerfile
-    container_name: fact-checker-agent
+    container_name: streamlit_service
+    ports:
+      - "8501:8501"
+    depends_on:
+      - fastapi_service
+    restart: unless-stopped
+    networks:
+      - agent_network
+
+  fastapi_service:
+    env_file:
+      - ./secrets.env
+    build:
+      context: ./fast_api
+      dockerfile: Dockerfile
+    container_name: fastapi_service
+    ports:
+      - "8000:8000"
     depends_on:
       - postgres
       - chromadb
@@ -63,14 +96,39 @@ services:
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
       - CHROMA_API_HOST=http://chromadb:8000
-      - OLLAMA_HOST=http://host.docker.internal:11434
+    restart: unless-stopped
+    networks:
+      - agent_network
 
-    ports:
-      - "5001:5001"
+
+  # fact-checker-agent:
+  #   build:
+  #     context: ./fact-checker-agent
+  #     dockerfile: Dockerfile
+  #   container_name: fact-checker-agent
+  #   depends_on:
+  #     - postgres
+  #     - chromadb
+  #   environment:
+  #     - POSTGRES_USER=fact-checker
+  #     - POSTGRES_PASSWORD=fact-checker
+  #     - POSTGRES_DB=claim_verifications
+  #     - POSTGRES_HOST=postgres
+  #     - POSTGRES_PORT=5432
+  #     - CHROMA_API_HOST=http://chromadb:8000
+  #     - OLLAMA_HOST=http://host.docker.internal:11434
+
+  #   ports:
+  #     - "5001:5001"
 
     
-    restart: unless-stopped
+  #   restart: unless-stopped
 
 volumes:
   pg_data:
   chroma_data:
+  pgadmin_data:
+
+networks:
+  agent_network:
+    driver: bridge

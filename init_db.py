@@ -16,12 +16,14 @@ with psycopg.connect(conn_str) as conn:
         CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
         CREATE TABLE IF NOT EXISTS claim_verifications (
+            original_claim TEXT NOT NULL,
+            original_claim_id TEXT NOT NULL,
             verification_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             salesperson_id TEXT NOT NULL,
-            claim_id TEXT NOT NULL,
             overall_verdict BOOLEAN NOT NULL,
             explanation TEXT,
             main_evidence JSONB,
+            pass_to_materials_agent BOOLEAN DEFAULT FALSE,
             created_at TIMESTAMPTZ DEFAULT NOW()
         );
         """

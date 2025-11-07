@@ -1,0 +1,14 @@
+langchain
+langgraph
+langchain-tavily
+langchain-ollama
+langchain-google-genai
+tzdata
+wikipedia
+wikipedia-api
+newspaper4k
+newsapi-python
+psycopg[binary]
+ddgs
+python-dotenv
+lxml_html_clean

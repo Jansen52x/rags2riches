@@ -4,6 +4,8 @@
 *.env
 fact-checker-agent/secrets.env
 
+.vscode/
+
 # Python
 */__pycache__/
 *.pyc

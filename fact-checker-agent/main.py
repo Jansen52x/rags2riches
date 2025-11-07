@@ -3,11 +3,11 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.agents import create_agent
 from langchain.tools import tool
 from langchain_tavily import TavilySearch
-from typing_extensions import TypedDict, List, Optional, Dict, Annotated
+from typing_extensions import TypedDict, List, Optional, Dict
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from langgraph.graph import START, StateGraph, END
-from langgraph.types import Command, Send
+from langgraph.types import Command
 import json
 import wikipedia
 import wikipediaapi
@@ -18,7 +18,7 @@ import sys
 from ddgs import DDGS
 import uuid
 import psycopg
-from operator import add
+import streamlit as st
 
 # Load variables from secrets.env
 load_dotenv("secrets.env")
@@ -36,16 +36,43 @@ class FactCheckState(TypedDict):
     client_context: Optional[str]
 
     # progressively added fields:
-    analyzed_claims: List[Dict]
-    all_claim_verdicts: Annotated[list[dict], add]
+    analyzed_claim: Dict
+    claim_verdict: Dict
+    evidence_log: List[Dict]
     # optional handoff status
     materials_status: Optional[str]
 
 # endregion
 
-# region Pre-search
+# region Helper Functions
+def save_claim_result_to_file(claim_result: dict, claim_id: str = None):
+    """Save a single claim result to a JSON file for testing purposes"""
+    os.makedirs("test_data", exist_ok=True)
+    
+    timestamp = datetime.now(ZoneInfo("Asia/Singapore")).strftime("%Y%m%d_%H%M%S")
+    filename = f"test_data/claim_result_{claim_id or timestamp}.json"
+    
+    with open(filename, 'w') as f:
+        json.dump(claim_result, f, indent=2)
+    
+    print(f"Claim result saved to {filename}")
+
+def load_claim_results_from_file(filename: str) -> list:
+    """Load claim results from a JSON file for testing the save_to_db function"""
+    with open(filename, 'r') as f:
+        data = json.load(f)
+    
+    # Handle both single result and list of results
+    if isinstance(data, list):
+        return data
+    else:
+        return [data]
+
+#endregion
+
+# region Graph nodes
 def analyze_node(state: FactCheckState) -> Command:
-    """Analyse the claim and break it down/normalise it if needed + Identify sourcing strategy"""
+    """Analyse the claim and normalise it if needed + Identify sourcing strategy"""
 
     claim = state["original_claim"]
     client_context = state["client_context"]
@@ -53,11 +80,9 @@ def analyze_node(state: FactCheckState) -> Command:
     prompt = f"""
     You are a fact-checking assistant helping a salesperson prepare for a client presentation.
 
-    Analyse the following claim carefully. 
-    - If appropriate, break it down into sub-claims that can be verified independently.
-    - Also ensure that the claims are specific and unambiguous.
+    Analyse the following claim carefully. Also ensure that the claims are specific and unambiguous.
 
-    For each claim (main or sub-claim), determine:
+    Determine:
     1. Preferred source types (e.g., news, industry reports, social media, review sites)
     2. What kind of information are most relevant (e.g., statistics, expert opinions, case studies)
     3. Approximate number of sources needed to make a verdict
@@ -66,17 +91,12 @@ def analyze_node(state: FactCheckState) -> Command:
 
     Output results in a similar format as the example below, and as **valid JSON**: 
     e.g. {{
-        "claims": [
-            {{
-                "claim": "<string>",
-                "analysis": {{
-                    "num_sources_needed": 5,
-                    "source_types": ["academic", "news", "government"],
-                    "focus_areas": ["expert opinions", "statistics"]
-                }}
-            }},
-            ...
-        ]
+            "claim": "<string>",
+            "analysis": {{
+                "num_sources_needed": 5,
+                "source_types": ["academic", "news", "government"],
+                "focus_areas": ["expert opinions", "statistics"]
+            }}
     }}
 
     Important:
@@ -91,42 +111,22 @@ def analyze_node(state: FactCheckState) -> Command:
     response = llm.invoke(prompt).content
 
     try:
-        data = json.loads(response)
-        claims_list = data.get("claims", [])
+        claim = json.loads(response)
     except json.JSONDecodeError:
         # fallback in case the LLM outputs plain text instead of valid JSON
-        claims_list = response
+        claim = response
 
     print(f"Claim analysis complete for claim")
 
     return Command(
-        update={"analyzed_claims": claims_list}
+        update={"analyzed_claim": claim}
     )
 
-#endregion
-
-# region Search + Evaluate for result
-def fan_out_searches(state: FactCheckState) -> Command:
-    """Create a search task for each subclaim, allowing for parallel execution"""
-    
-    claims = state["analyzed_claims"]
-    print(f"Fanning out searches for {len(claims)} claims...")
-
-    # Provide 1 search instance per claim and add 1 "fanned out search" to the search count
-    return Command(
-        goto=[
-            Send("search_single_claim", {
-                "claim": sc['claim'], 
-                "analysis": sc['analysis']
-            })
-            for sc in claims
-        ]
-    )
-
-def search_single_claim(state: FactCheckState) -> Command:
-    """Search for ONE claim with its strategy"""
-    claim = state['claim']
-    strategy = state['analysis']
+def search_claim(state: FactCheckState) -> Command:
+    """Search for claim with its strategy"""
+    analyzed_claim = state['analyzed_claim']
+    claim = analyzed_claim['claim']
+    strategy = analyzed_claim['analysis']
 
     print(f"Starting search for claim: {claim}")
     
@@ -156,7 +156,6 @@ def search_single_claim(state: FactCheckState) -> Command:
     response = agent.invoke(
         {"messages": [{"role": "user", "content": prompt}]}
     )
-    print(response)
 
     tools_evidence = []
 
@@ -197,16 +196,14 @@ def search_single_claim(state: FactCheckState) -> Command:
 
     print(f"Search complete for {claim}.")
     return Command(
-        goto=Send("process_search_result", {
-                "raw_verdict": final_ai_message_content,
-                "evidence_log": tools_evidence
-            })
+        update={"raw_verdict": final_ai_message_content, "evidence_log": tools_evidence}
     )
 
 def process_search_result(state: FactCheckState) -> Command:
     """Process the result from search_single_claim and update the claim_verdicts list"""
     raw_verdict = state.get("raw_verdict", {})
     evidence_log = state.get("evidence_log", [])
+    original_claim = state.get("original_claim", "Unknown Claim")
     print("Processing search result")
     prompt = f"""
     Verdict: {raw_verdict}
@@ -234,32 +231,34 @@ def process_search_result(state: FactCheckState) -> Command:
 
     response = llm.invoke(prompt).content
     try:
-        current_claim_result = json.loads(response)
+        claim_result = json.loads(response)
+        
     except json.JSONDecodeError:
         # fallback in case the LLM outputs plain text instead of valid JSON
-        current_claim_result = response
+        claim_result = response
 
     print("Processed search result for claim.")
-    print(current_claim_result)
-    return {"all_claim_verdicts": [current_claim_result]}
+    
+    # Save the claim result to a JSON file for testing
+    save_claim_result_to_file(claim_result, state.get("claim_id", "unknown"))
+    
+    return {"claim_verdict": claim_result}
 
-#endregion
-
-# region terminus
 def save_to_db(state: FactCheckState) -> Command:
     """
-    Save the final verdicts to the database
+    Save the verdict to the database
     Verdict_data should contain:
         - salesperson_id: str
         - claim_id: str
         - overall_verdict: bool
         - explanation: str
         - main_evidence: list of dicts with 'source' and 'summary'
+        - pass_to_materials_agent: bool
 
     """
 
-    print("Saving verdicts to database...")
-    verdicts = state["claim_verdicts"]
+    print("Saving verdict to database...")
+    verdict = state.get("claim_verdict")
     salesperson_id = state.get("salesperson_id")
     claim_id = state.get("claim_id")
 
@@ -267,86 +266,33 @@ def save_to_db(state: FactCheckState) -> Command:
     with psycopg.connect("dbname=claim_verifications user=fact-checker password=fact-checker host=localhost port=5432") as conn:
 
         # Inserting data
-        for verdict in verdicts:
-            try: 
-                verdict_str = str(verdict.get('overall_verdict', '')).upper()
-                overall_bool = True if verdict_str == 'TRUE' else False
-                evidence_json = json.dumps(verdict.get('main_evidence', []))
-                conn.execute(
-                    "INSERT INTO claim_verifications (salesperson_id, claim_id, overall_verdict, explanation, main_evidence) VALUES (%s, %s, %s, %s, %s)",
-                    (
-                        salesperson_id,
-                        claim_id,
-                        overall_bool,
-                        verdict.get('explanation'),
-                        evidence_json
-                    )
-                )
-                print("Verdict saved to database.")
-
-            except Exception as e:
-                print(f"Error saving verdict to database: {e}")
-                return Command(update={"status": "verdict_failed"}, goto=END)
+        try: 
+            original_claim = verdict.get('claim', 'Unknown Claim')
+            verdict_str = str(verdict.get('overall_verdict', '')).upper()
+            overall_bool = True if verdict_str == 'TRUE' else False
+            evidence_json = json.dumps(verdict.get('main_evidence', []))
+            pass_to_materials = verdict.get('pass_to_materials_agent', False)
             
-    return Command(update={"status": "verdict_saved"})
+            conn.execute(
+                "INSERT INTO claim_verifications (original_claim, original_claim_id, salesperson_id, overall_verdict, explanation, main_evidence, pass_to_materials_agent) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                (
+                    original_claim,
+                    salesperson_id,
+                    claim_id,
+                    overall_bool,
+                    verdict.get('explanation'),
+                    evidence_json,
+                    pass_to_materials
+                )
+            )
+            print(f"Verdict saved to database (pass_to_materials_agent: {pass_to_materials})")
 
+        except Exception as e:
+            print(f"Error saving verdict to database: {e}")
+            return Command(update=state, goto=END)
+            
+    return Command(update=state, goto=END)
 
-def pass_to_materials(state: FactCheckState) -> Command:
-    """Trigger the Materials Decision Agent with approved claims and persist decisions.
-
-    Uses a dynamic import to load the integration bridge from the sibling
-    'materials-agent' folder (hyphenated, not importable as a package by default).
-    """
-    import importlib.util
-    import os
-    import sys
-
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    materials_dir = os.path.join(base_dir, "materials-agent")
-    bridge_path = os.path.join(materials_dir, "integration_bridge.py")
-
-    approved_claims = [v for v in state.get("claim_verdicts", []) if v.get("pass_to_materials_agent") is True]
-    if not approved_claims:
-        print("No claims approved for materials generation")
-        return Command(goto=END)
-
-    if not os.path.isfile(bridge_path):
-        print(f"Materials integration bridge not found at {bridge_path}")
-        return Command(goto=END)
-
-    try:
-        # Ensure 'materials-agent' directory is on sys.path so that
-        # integration_bridge can import sibling modules like materials_decision_agent
-        if materials_dir not in sys.path:
-            sys.path.append(materials_dir)
-
-        spec = importlib.util.spec_from_file_location("materials_integration_bridge", bridge_path)
-        bridge = importlib.util.module_from_spec(spec)
-        assert spec and spec.loader
-        spec.loader.exec_module(bridge)
-
-        print(f"Passing {len(approved_claims)} verified claims to materials agent...")
-        result = bridge.run_complete_pipeline(state)
-
-        status = result.get("status", "unknown") if isinstance(result, dict) else "unknown"
-        print(f"Materials agent result: {status}")
-
-        # Optionally persist summary in state
-        update = {
-            "materials_agent_status": status,
-        }
-        if isinstance(result, dict):
-            update.update({
-                "materials_session_id": result.get("session_id"),
-                "materials_recommendations_count": result.get("recommendations_count"),
-                "materials_selected_count": result.get("selected_materials_count"),
-            })
-
-        return Command(update=update, goto=END)
-
-    except Exception as e:
-        print(f"Error invoking materials agent: {e}")
-        return Command(update={"materials_agent_status": "error", "materials_error": str(e)}, goto=END)
 
 #endregion
 
@@ -451,50 +397,205 @@ def query_rag_system(refined_query: str) -> str: # Not yet implemented
 # region Setup
 # Creating search agent
 llm = ChatOllama(model="llama3.2:3b", temperature=0)
-# bigLM = ChatOllama(model="qwen3:4b", temperature=0)
 bigLM = ChatGoogleGenerativeAI(model="gemini-2.5-pro", temperature=0)
 tools = [duckduckgo_search_text, tavily_search, search_wikipedia, get_news_articles, query_rag_system] # Agent needs the search tools, the scraper and the RAG query tool
 agent = create_agent(bigLM, tools)
 
-# Example Claim
-claim = "Shopee was leading in market share in 2023"
-# claim = "By 2023, Singapore’s e-commerce market reached SGD 9 billion in sales, with Shopee leading in market share, while over 80% of consumers reported shopping online at least once a month."
-# client_context = "The client is a small e-commerce startup in Singapore"
-client_context = ""
-
-sg_time = datetime.now(ZoneInfo("Asia/Singapore"))
-timestamp = sg_time.replace(microsecond=0).isoformat()
-
-initial_state = FactCheckState(
-    claim_id= str(uuid.uuid4()),  # randomly generated unique ID for the claim
-    original_claim=claim,
-    salesperson_id="SP12345",
-    client_context=client_context,
-    analyzed_claims=[],
-    claim_verdicts=[]
+# Streamlit page config
+st.set_page_config(
+    page_title="Claim Verifier",
+    # page_icon="🎯",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-graph =  StateGraph(FactCheckState)
+# Custom CSS for better styling
+st.markdown("""
+<style>
+.main-header {
+    background: linear-gradient(90deg, #1f77b4, #ff7f0e);
+    padding: 1rem;
+    border-radius: 10px;
+    color: white;
+    text-align: center;
+    margin-bottom: 2rem;
+}
 
-# add nodes to graph
-graph.add_node("analyze", analyze_node)
-graph.add_node("search", fan_out_searches)
-graph.add_node("search_single_claim", search_single_claim)
-graph.add_node("process_search_result", process_search_result)
-graph.add_node("save", save_to_db)
-graph.add_node("pass_to_materials", pass_to_materials)
+.material-card {
+    border: 1px solid #dcdcdc;
+    border-radius: 10px;
+    padding: 1.2rem;
+    margin: 0.75rem 0;
+    background: #ffffff; /* ensure readable on dark theme */
+    color: #111;
+}
 
-# add edges to graph
-graph.add_edge(START, "analyze")
-graph.add_edge("analyze", "search")
-graph.add_edge("search_single_claim", "save")
-graph.add_edge("save", "pass_to_materials")
-graph.add_edge("pass_to_materials", END)
+.material-card h4,
+.material-card p,
+.material-card li,
+.material-card strong,
+.material-card span {
+    color: #111 !important; /* override Streamlit dark text color inside white card */
+}
 
-# compile graph
-app = graph.compile()
+</style>
+""", unsafe_allow_html=True)
 
-# invoke with initial state
-final_state = app.invoke(initial_state)
+progress_steps = [
+    {"value": 50, "text": "Step 2/4: Searching the web to gain evidence and make a verdict..."},
+    {"value": 75, "text": "Step 3/4: Processing results..."},
+    {"value": 90, "text": "Step 4/4: Saving verdict..."},
+    {"value": 100, "text": "Claim verification complete!"}
+]
 
-#endregion
+# Initialize session state
+if 'session_id' not in st.session_state:
+    st.session_state.session_id = str(uuid.uuid4())
+if 'claim' not in st.session_state:
+    st.session_state.claim = "Shopee has a terrible working culture"
+if 'workflow_complete' not in st.session_state:
+    st.session_state.workflow_complete = False
+if 'claim_verdict' not in st.session_state:
+    st.session_state.claim_verdict = ""
+
+st.markdown(f"""
+<div class="main-header">
+    <h1>Fact Checking Agent</h1>
+    <p>Fact checking the claims from the RAG for your convenience</p>
+</div>
+""", unsafe_allow_html=True)
+
+# Sidebar for inputs
+with st.sidebar:
+    st.header("📋 Session Setup")
+    
+    salesperson_id = st.text_input(
+        "Salesperson ID", 
+        value="SP12345",
+        help="Your unique salesperson identifier"
+    )
+    
+    client_context = st.text_area(
+        "Client Context",
+        value="Small e-commerce startup in Singapore looking to understand market opportunities",
+        height=200,
+        help="Describe your client and meeting context"
+    )
+
+    if st.button("Reset Session"):
+        for key in list(st.session_state.keys()):
+            if key != 'session_id':
+                del st.session_state[key]
+        st.session_state.session_id = str(uuid.uuid4())
+        st.success("Session reset!")
+        st.rerun()
+
+# Main content area
+# Display current claim
+if 'claim' in st.session_state:
+    st.header("Claim To Verify")
+    
+    st.write(f"Claim: {st.session_state.claim}")
+    
+    # Verify claim
+    if st.button("Verify claim", type="primary"):
+        try:
+            sg_time = datetime.now(ZoneInfo("Asia/Singapore"))
+            timestamp = sg_time.replace(microsecond=0).isoformat()
+
+            initial_state = FactCheckState(
+                claim_id= str(uuid.uuid4()),  # randomly generated unique ID for the claim
+                original_claim=st.session_state.claim,
+                salesperson_id="SP12345",
+                client_context=client_context,
+                analyzed_claim="",
+                claim_verdict="",
+                evidence_log=[],
+            )
+
+            graph =  StateGraph(FactCheckState)
+
+            # add nodes to graph
+            graph.add_node("analyze", analyze_node)
+            graph.add_node("search", search_claim)
+            graph.add_node("process", process_search_result)
+            graph.add_node("save", save_to_db)
+
+            # add edges to graph
+            graph.add_edge(START, "analyze")
+            graph.add_edge("analyze", "search")
+            graph.add_edge("search", "process")
+            graph.add_edge("process", "save")
+            graph.add_edge("save", END)
+
+            # compile graph
+            app = graph.compile()
+            
+            final_state = None
+
+            progress_bar = st.progress(25)
+            progress_text = st.empty()
+            progress_text.text("Step 1/4: Analyzing claim...")
+            update_count = 0
+            for update in app.stream(initial_state):
+                progress_bar.progress(progress_steps[update_count]["value"])
+                progress_text.text(progress_steps[update_count]["text"])
+                update_count += 1
+                final_state = update
+            
+            final_state = final_state["save"]
+                
+            # 4. SET TO 100% AT THE END
+            progress_bar.progress(progress_steps[-1]["value"])
+            progress_text.text(progress_steps[-1]["text"])
+
+            st.success("Claim verified!")
+            st.session_state.workflow_complete = True
+            st.session_state.claim_verdict = final_state.get("claim_verdict")
+            st.rerun()
+        except Exception as e:
+            st.error(f"Error verifying claim: {str(e)}")
+
+# Display verdicts
+if st.session_state.workflow_complete and st.session_state.claim_verdict:
+    st.header("Claim Verdict")
+    
+    clm = st.session_state.claim_verdict
+    original_claim = st.session_state.claim
+    st.markdown(f"""
+    <div class="material-card">
+        <h4>{original_claim}</h4>
+        <p><strong>Overall Verdict:</strong> {clm['overall_verdict']}</p>
+        <p><strong>Reasoning:</strong> {clm['explanation']}</p>
+        <p><strong>Evidence Used:</strong> {', '.join([ev['source'] for ev in clm.get('main_evidence', [])])}</p>
+        <p><strong>Should you pass to Materials Agent:</strong> {"Yes" if clm['pass_to_materials_agent'] else "No"}
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+if st.session_state.workflow_complete:
+    st.header("Continue to Materials Generation")
+    st.write("If you would like to pass this to the materials agent, click the button below to proceed.")
+    if st.button(
+        "Generate Materials from Claim", 
+        type="primary",
+        disabled=not st.session_state.workflow_complete
+    ):
+        # --- Placeholder for passing to materials agent ---
+        with st.spinner("Passing selected claims to Materials Agent..."):
+            # In a real scenario, you would call the pass_to_materials function here
+            # with the selected claims.
+            # For now, we'll just show an info message.
+            st.info(f"Placeholder: Passing claim to the Materials Generation Agent.")
+            # ----------------------------------------------------
+
+# Footer
+st.markdown("---")
+st.markdown("**Fact Checker Agent** | Part of the Rags2Riches AI Sales Assistant Suite")
+
+# Debug information (only show in development)
+if st.checkbox("Show Debug Info"):
+    st.subheader("Debug Information")
+    st.write("Session State:")
+    st.json(dict(st.session_state))

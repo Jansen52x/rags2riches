@@ -21,7 +21,7 @@ def extract_verified_claims_from_fact_checker(fact_check_state: Dict) -> List[Di
     """
     
     verified_claims = []
-    claim_verdicts = fact_check_state.get("claim_verdicts", [])
+    claim_verdicts = fact_check_state.get("all_claim_verdicts", [])
     
     for i, verdict in enumerate(claim_verdicts):
         # Only include claims that passed fact-checking
