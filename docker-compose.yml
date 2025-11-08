@@ -14,6 +14,8 @@ services:
       # pg_ctlcluster layout warning.
       - pg_data:/var/lib/postgresql
     restart: unless-stopped
+    networks:
+      - agent_network
 
   db_init:
     image: python:3.12-slim
@@ -34,6 +36,8 @@ services:
         "-c",
         "pip install --no-cache-dir 'psycopg[binary]' && python /init_db.py",
       ]
+    networks:
+      - agent_network
 
   # ChromaDB Vector Database for RAG
   chromadb:
@@ -47,6 +51,8 @@ services:
       - IS_PERSISTENT=TRUE
       - ANONYMIZED_TELEMETRY=FALSE
     restart: unless-stopped
+    networks:
+      - agent_network
 
   # pgAdmin - PostgreSQL Web UI
   pgadmin:
@@ -63,6 +69,8 @@ services:
     depends_on:
       - postgres
     restart: unless-stopped
+    networks:
+     - agent_network
 
   streamlit_service:
     build:

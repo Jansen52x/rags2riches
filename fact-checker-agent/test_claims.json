@@ -1,0 +1,254 @@
+{
+  "claims": [
+    {
+      "id": 1,
+      "claim": "Salesforce reported a 11% year-over-year revenue growth in their Q3 2024 earnings.",
+      "expected_verdict": "CANNOT BE DETERMINED"
+    },
+    {
+      "id": 2,
+      "claim": "According to Gartner's 2024 Magic Quadrant, Salesforce is positioned as a Leader in the CRM space.",
+      "expected_verdict": "TRUE"
+    },
+    {
+      "id": 3,
+      "claim": "Microsoft announced they are discontinuing Azure DevOps in Q1 2025.",
+      "expected_verdict": "FALSE"
+    },
+    {
+      "id": 4,
+      "claim": "According to McKinsey's 2024 report, 70% of digital transformation projects fail.",
+      "expected_verdict": "CANNOT BE DETERMINED"
+    },
+    {
+      "id": 5,
+      "claim": "HubSpot recently announced they're shutting down their marketing automation platform.",
+      "expected_verdict": "FALSE"
+    },
+    {
+      "id": 6,
+      "claim": "The global CRM market is expected to reach $128 billion by 2028 according to Fortune Business Insights.",
+      "expected_verdict": "CANNOT BE DETERMINED"
+    },
+    {
+      "id": 7,
+      "claim": "Zoom reported having over 300 million daily meeting participants in their Q3 2024 earnings call.",
+      "expected_verdict": "CANNOT BE DETERMINED"
+    },
+    {
+      "id": 8,
+      "claim": "According to IDC, global spending on cloud services exceeded $1 trillion in 2024.",
+      "expected_verdict": "CANNOT BE DETERMINED"
+    },
+    {
+      "id": 9,
+      "claim": "ServiceNow filed for bankruptcy in October 2024.",
+      "expected_verdict": "FALSE"
+    },
+    {
+      "id": 10,
+      "claim": "Slack has more daily active users than Microsoft Teams as of 2024.",
+      "expected_verdict": "FALSE"
+    },
+    {
+      "id": 11,
+      "claim": "According to Deloitte's 2024 survey, 83% of executives cite data security as their top concern when adopting new software.",
+      "expected_verdict": "CANNOT BE DETERMINED"
+    },
+    {
+      "id": 12,
+      "claim": "Adobe Commerce (formerly Magento) announced they will no longer support on-premise deployments starting 2025.",
+      "expected_verdict": "CANNOT BE DETERMINED"
+    },
+    {
+      "id": 13,
+      "claim": "Workday has more than 10,000 enterprise customers globally as of 2024.",
+      "expected_verdict": "TRUE"
+    },
+    {
+      "id": 14,
+      "claim": "Google shut down Gmail and replaced it entirely with Google Workspace in 2024.",
+      "expected_verdict": "FALSE"
+    },
+    {
+      "id": 15,
+      "claim": "According to PwC's 2024 Digital Trust Insights report, companies using zero-trust security models experience 45% fewer breaches.",
+      "expected_verdict": "CANNOT BE DETERMINED"
+    },
+    {
+      "id": 16,
+      "claim": "HubSpot's pricing starts at $15 per month for their Starter plan.",
+      "expected_verdict": "CANNOT BE DETERMINED"
+    },
+    {
+      "id": 17,
+      "claim": "Amazon Web Services discontinued their EC2 service in 2024.",
+      "expected_verdict": "FALSE"
+    },
+    {
+      "id": 18,
+      "claim": "Shopify's total GMV (Gross Merchandise Volume) exceeded $200 billion in 2023.",
+      "expected_verdict": "TRUE"
+    },
+    {
+      "id": 19,
+      "claim": "Meta (Facebook) announced they're discontinuing Instagram for business accounts.",
+      "expected_verdict": "FALSE"
+    },
+    {
+      "id": 20,
+      "claim": "Stripe processes over $1 trillion in payment volume annually.",
+      "expected_verdict": "TRUE"
+    },
+    {
+      "id": 21,
+      "claim": "According to Accenture's research, 91% of consumers are more likely to shop with brands that provide personalized recommendations.",
+      "expected_verdict": "CANNOT BE DETERMINED"
+    },
+    {
+      "id": 22,
+      "claim": "Snowflake's stock price increased by over 200% in 2024.",
+      "expected_verdict": "FALSE"
+    },
+    {
+      "id": 23,
+      "claim": "OpenAI released GPT-5 with 100 trillion parameters in October 2024.",
+      "expected_verdict": "FALSE"
+    },
+    {
+      "id": 24,
+      "claim": "Cisco announced they're exiting the networking hardware business entirely.",
+      "expected_verdict": "FALSE"
+    },
+    {
+      "id": 25,
+      "claim": "MongoDB's revenue grew by over 30% year-over-year in their fiscal year 2024.",
+      "expected_verdict": "CANNOT BE DETERMINED"
+    },
+    {
+      "id": 26,
+      "claim": "According to Statista, global e-commerce sales reached approximately $5.8 trillion in 2023.",
+      "expected_verdict": "TRUE"
+    },
+    {
+      "id": 27,
+      "claim": "Atlassian acquired Slack for $27 billion in 2024.",
+      "expected_verdict": "FALSE"
+    },
+    {
+      "id": 28,
+      "claim": "Zendesk's Net Promoter Score (NPS) is above 50 according to their latest customer survey.",
+      "expected_verdict": "CANNOT BE DETERMINED"
+    },
+    {
+      "id": 29,
+      "claim": "DocuSign controls over 70% of the e-signature market share globally.",
+      "expected_verdict": "CANNOT BE DETERMINED"
+    },
+    {
+      "id": 30,
+      "claim": "Tesla discontinued their entire Model 3 product line in 2024.",
+      "expected_verdict": "FALSE"
+    },
+    {
+      "id": 31,
+      "claim": "AWS offers a 99.99% uptime SLA for their EC2 service.",
+      "expected_verdict": "TRUE"
+    },
+    {
+      "id": 32,
+      "claim": "PayPal acquired Square (now Block) in a $50 billion deal in 2024.",
+      "expected_verdict": "FALSE"
+    },
+    {
+      "id": 33,
+      "claim": "According to Forrester's 2024 report, B2B buyers complete 60% of their purchase decision before engaging with sales.",
+      "expected_verdict": "CANNOT BE DETERMINED"
+    },
+    {
+      "id": 34,
+      "claim": "Twilio's annual revenue exceeded $4 billion in their fiscal year 2023.",
+      "expected_verdict": "TRUE"
+    },
+    {
+      "id": 35,
+      "claim": "SAP announced they're discontinuing SAP S/4HANA and returning to older ERP systems.",
+      "expected_verdict": "FALSE"
+    },
+    {
+      "id": 36,
+      "claim": "Red Hat was acquired by IBM in 2019 for approximately $34 billion.",
+      "expected_verdict": "TRUE"
+    },
+    {
+      "id": 37,
+      "claim": "Salesforce's Market Cloud product has been completely discontinued as of 2024.",
+      "expected_verdict": "FALSE"
+    },
+    {
+      "id": 38,
+      "claim": "LinkedIn surpassed 1 billion members globally in 2023.",
+      "expected_verdict": "TRUE"
+    },
+    {
+      "id": 39,
+      "claim": "According to Gartner, worldwide IT spending is projected to total $5.1 trillion in 2024.",
+      "expected_verdict": "CANNOT BE DETERMINED"
+    },
+    {
+      "id": 40,
+      "claim": "Zoom's free plan allows meetings up to 40 minutes for groups of 3 or more participants.",
+      "expected_verdict": "TRUE"
+    },
+    {
+      "id": 41,
+      "claim": "Oracle shut down Oracle Cloud Infrastructure (OCI) in 2024 to focus on database products.",
+      "expected_verdict": "FALSE"
+    },
+    {
+      "id": 42,
+      "claim": "Shopify has over 2 million merchants using their platform worldwide as of 2024.",
+      "expected_verdict": "TRUE"
+    },
+    {
+      "id": 43,
+      "claim": "According to HubSpot's State of Marketing Report 2024, video content generates 12x more engagement than text and images combined.",
+      "expected_verdict": "CANNOT BE DETERMINED"
+    },
+    {
+      "id": 44,
+      "claim": "Microsoft Teams reached 300 million monthly active users in 2023.",
+      "expected_verdict": "TRUE"
+    },
+    {
+      "id": 45,
+      "claim": "Asana announced they're being acquired by Monday.com for $15 billion.",
+      "expected_verdict": "FALSE"
+    },
+    {
+      "id": 46,
+      "claim": "According to McKinsey, companies with advanced analytics capabilities are 23 times more likely to acquire customers.",
+      "expected_verdict": "CANNOT BE DETERMINED"
+    },
+    {
+      "id": 47,
+      "claim": "Dropbox has over 700 million registered users globally.",
+      "expected_verdict": "TRUE"
+    },
+    {
+      "id": 48,
+      "claim": "GitHub has more than 100 million developers on its platform as of 2024.",
+      "expected_verdict": "TRUE"
+    },
+    {
+      "id": 49,
+      "claim": "Tableau was discontinued by Salesforce after being deemed unprofitable in 2024.",
+      "expected_verdict": "FALSE"
+    },
+    {
+      "id": 50,
+      "claim": "According to Adobe's Digital Trends Report, 73% of companies plan to increase their investment in customer experience initiatives.",
+      "expected_verdict": "CANNOT BE DETERMINED"
+    }
+  ]
+}

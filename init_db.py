@@ -5,7 +5,7 @@ import psycopg
 DB_NAME = os.getenv("POSTGRES_DB", "claim_verifications")
 DB_USER = os.getenv("POSTGRES_USER", "fact-checker")
 DB_PASSWORD = os.getenv("POSTGRES_PASSWORD", "fact-checker")
-DB_HOST = os.getenv("POSTGRES_HOST", "localhost")
+DB_HOST = os.getenv("POSTGRES_HOST", "postgres")
 DB_PORT = int(os.getenv("POSTGRES_PORT", "5432"))
 
 conn_str = f"dbname={DB_NAME} user={DB_USER} password={DB_PASSWORD} host={DB_HOST} port={DB_PORT}"
@@ -20,7 +20,7 @@ with psycopg.connect(conn_str) as conn:
             original_claim_id TEXT NOT NULL,
             verification_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             salesperson_id TEXT NOT NULL,
-            overall_verdict BOOLEAN NOT NULL,
+            overall_verdict TEXT NOT NULL,
             explanation TEXT,
             main_evidence JSONB,
             pass_to_materials_agent BOOLEAN DEFAULT FALSE,

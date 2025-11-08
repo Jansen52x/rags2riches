@@ -5,6 +5,13 @@ import uuid
 from datetime import datetime
 from zoneinfo import ZoneInfo 
 
+# Streamlit page config
+st.set_page_config(
+    page_title="Fact Checker Service",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
 # Custom CSS for better styling
 st.markdown("""
 <style>
@@ -51,6 +58,8 @@ if 'claim_verdict' not in st.session_state:
     st.session_state.claim_verdict = None
 if 'claim' not in st.session_state:
     st.session_state.claim = ""
+if 'verifying_claim' not in st.session_state:
+    st.session_state.verifying_claim = False
 
 with st.sidebar:
     st.header("📋 Session Setup")
@@ -61,7 +70,7 @@ with st.sidebar:
         height=200
     )
     if st.button("Reset Session"):
-        # ... (reset logic is fine, keep it) ...
+        st.session_state.clear()
         st.rerun()
 
 # --- Main Content Area ---
@@ -70,7 +79,7 @@ if 'claim' in st.session_state:
     st.write(f"Claim: {st.session_state.claim}")
 
     # ===== THIS IS THE MODIFIED PART =====
-    if st.button("Verify claim", type="primary"):
+    if st.button("Verify claim", type="primary", disabled=st.session_state.verifying_claim):
         
         # --- This is the Sample Request you asked for ---
         # 1. Define the API endpoint
@@ -89,7 +98,7 @@ if 'claim' in st.session_state:
         progress_text.text("Step 1/4: Analyzing claim...")
         
         final_verdict = None
-
+        st.session_state.verifying_claim = True
         try:
             # 4. Call the API with stream=True
             with requests.post(API_URL, json=payload, stream=True, timeout=300) as response:
@@ -99,8 +108,7 @@ if 'claim' in st.session_state:
                 for line in response.iter_lines():
                     if line:
                         data = json.loads(line.decode('utf-8'))
-                        
-                        # Check for an error message from the agent
+                        # # Check for an error message from the agent
                         type = data.get("type", "")
                         if type == "error":
                             st.error(f"Agent Error: {data['error']}")
@@ -119,6 +127,7 @@ if 'claim' in st.session_state:
                 st.success("Claim verified!")
                 st.session_state.workflow_complete = True
                 st.session_state.claim_verdict = final_verdict["claim_verdict"]
+                st.session_state.verifying_claim = False
                 st.rerun()
             else:
                 st.error("Failed to get a final verdict from the agent.")
@@ -130,7 +139,7 @@ if 'claim' in st.session_state:
     # ===== END OF MODIFIED PART =====
 
 
-# --- Display Verdicts (No changes needed, this is perfect) ---
+# --- Display Verdicts ---
 if st.session_state.workflow_complete and st.session_state.claim_verdict:
     st.header("Claim Verdict")
     clm = st.session_state.claim_verdict
@@ -147,7 +156,7 @@ if st.session_state.workflow_complete and st.session_state.claim_verdict:
     </div>
     """, unsafe_allow_html=True)
 
-# --- Continue Button (No changes needed, this is perfect) ---
+# --- Continue Button ---
 if st.session_state.workflow_complete:
     st.header("Continue to Materials Generation")
     st.write("If you would like to pass this to the materials agent, click the button below to proceed.")
@@ -156,13 +165,9 @@ if st.session_state.workflow_complete:
         type="primary",
         disabled=not st.session_state.workflow_complete
     ):
-        # --- Placeholder for passing to materials agent ---
+        # --- Pass to materials agent ---
         with st.spinner("Passing selected claims to Materials Agent..."):
-            # In a real scenario, you would call the pass_to_materials function here
-            # with the selected claims.
-            # For now, we'll just show an info message.
-            st.info(f"Placeholder: Passing claim to the Materials Generation Agent.")
-            # ----------------------------------------------------
+            st.switch_page("pages/3_Materials_Agent.py")
 
 # Footer
 st.markdown("---")

@@ -16,9 +16,7 @@ from dotenv import load_dotenv
 import os
 import sys
 from ddgs import DDGS
-import uuid
 import psycopg
-import streamlit as st
 
 # Load variables from secrets.env
 load_dotenv("secrets.env")
@@ -43,32 +41,6 @@ class FactCheckState(TypedDict):
     materials_status: Optional[str]
 
 # endregion
-
-# region Helper Functions
-def save_claim_result_to_file(claim_result: dict, claim_id: str = None):
-    """Save a single claim result to a JSON file for testing purposes"""
-    os.makedirs("test_data", exist_ok=True)
-    
-    timestamp = datetime.now(ZoneInfo("Asia/Singapore")).strftime("%Y%m%d_%H%M%S")
-    filename = f"test_data/claim_result_{claim_id or timestamp}.json"
-    
-    with open(filename, 'w') as f:
-        json.dump(claim_result, f, indent=2)
-    
-    print(f"Claim result saved to {filename}")
-
-def load_claim_results_from_file(filename: str) -> list:
-    """Load claim results from a JSON file for testing the save_to_db function"""
-    with open(filename, 'r') as f:
-        data = json.load(f)
-    
-    # Handle both single result and list of results
-    if isinstance(data, list):
-        return data
-    else:
-        return [data]
-
-#endregion
 
 # region Graph nodes
 def analyze_node(state: FactCheckState) -> Command:
@@ -132,25 +104,33 @@ def search_claim(state: FactCheckState) -> Command:
     
     prompt = f"""
     You are fact-checking this claim: {claim}
-    You need:
-    - {strategy['num_sources_needed']} credible sources at minimum
-    - to prioritise these source types: {', '.join(strategy['source_types'])}
-    - to focus on these types of information: {', '.join(strategy['focus_areas'])}
-    
-    You are given a set of tools that allow you to search the web and find the best sources to fact-check this claim. 
-    You MUST use these tools and their output as a base to formulate your claim
-    You may also query the RAG system that provided this claim in the first place if the web search does not yield sufficient information
-    You may use the tools as many times as needed to make a verdict, or to determine that you cannot make a verdict.
-    Make your queries simple so that it is easy to get relevant results, then be more specific if there are too many. 
-    Do not call the same tool with the same query as it will definitely give you the same results.
-    
-    Be sure to evaluate the sources for credibility and relevance.
-    
-    Provide your verdict with the following information:
-    1. Overall Verdict: TRUE, FALSE, or CANNOT BE DETERMINED
-    2. Explanation: A concise explanation of how you arrived at the verdict
 
-    If you cannot make a claim based on the sources then just say "CANNOT BE DETERMINED". An absence of evidence does not necessarily mean it's false, so think critically.
+    REQUIREMENTS:
+    - Find at least {strategy.get('num_sources_needed', 3)} credible sources
+    - Prioritize these source types: {', '.join(strategy.get('source_types', ['news', 'academic', 'government']))}
+    - Focus on: {', '.join(strategy.get('focus_areas', ['accuracy', 'context']))}
+
+    TOOLS:
+    - Use the web search tools to find sources
+    - Start with simple, broad queries, then refine if needed
+    - Do NOT repeat identical queries for the same tool (same input = same output)
+    - Stop after 5-7 unique searches if you haven't found sufficient reliable information
+
+    EVALUATION CRITERIA:
+    - Assess source credibility (authoritative, recent, primary when possible)
+    - Look for corroboration across multiple independent sources
+    - If sources conflict, note this and weigh by credibility
+    - Absence of evidence ≠ evidence of falseness (think critically about what would be documented)
+
+
+    VERDICT RULES:
+    - TRUE: Multiple credible sources confirm the claim
+    - FALSE: Credible sources clearly contradict the claim
+    - CANNOT BE DETERMINED: Insufficient evidence, conflicting reliable sources, or absence of information
+
+    OUTPUT FORMAT:
+    1. Overall Verdict: TRUE, FALSE, or CANNOT BE DETERMINED
+    2. Explanation: A concise explanation of how you arrived at the verdict    
     """
     
     response = agent.invoke(
@@ -238,9 +218,6 @@ def process_search_result(state: FactCheckState) -> Command:
         claim_result = response
 
     print("Processed search result for claim.")
-    
-    # Save the claim result to a JSON file for testing
-    save_claim_result_to_file(claim_result, state.get("claim_id", "unknown"))
     
     return {"claim_verdict": claim_result}
 
@@ -400,202 +377,3 @@ llm = ChatOllama(model="llama3.2:3b", temperature=0)
 bigLM = ChatGoogleGenerativeAI(model="gemini-2.5-pro", temperature=0)
 tools = [duckduckgo_search_text, tavily_search, search_wikipedia, get_news_articles, query_rag_system] # Agent needs the search tools, the scraper and the RAG query tool
 agent = create_agent(bigLM, tools)
-
-# Streamlit page config
-st.set_page_config(
-    page_title="Claim Verifier",
-    # page_icon="🎯",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-# Custom CSS for better styling
-st.markdown("""
-<style>
-.main-header {
-    background: linear-gradient(90deg, #1f77b4, #ff7f0e);
-    padding: 1rem;
-    border-radius: 10px;
-    color: white;
-    text-align: center;
-    margin-bottom: 2rem;
-}
-
-.material-card {
-    border: 1px solid #dcdcdc;
-    border-radius: 10px;
-    padding: 1.2rem;
-    margin: 0.75rem 0;
-    background: #ffffff; /* ensure readable on dark theme */
-    color: #111;
-}
-
-.material-card h4,
-.material-card p,
-.material-card li,
-.material-card strong,
-.material-card span {
-    color: #111 !important; /* override Streamlit dark text color inside white card */
-}
-
-</style>
-""", unsafe_allow_html=True)
-
-progress_steps = [
-    {"value": 50, "text": "Step 2/4: Searching the web to gain evidence and make a verdict..."},
-    {"value": 75, "text": "Step 3/4: Processing results..."},
-    {"value": 90, "text": "Step 4/4: Saving verdict..."},
-    {"value": 100, "text": "Claim verification complete!"}
-]
-
-# Initialize session state
-if 'session_id' not in st.session_state:
-    st.session_state.session_id = str(uuid.uuid4())
-if 'claim' not in st.session_state:
-    st.session_state.claim = "Shopee has a terrible working culture"
-if 'workflow_complete' not in st.session_state:
-    st.session_state.workflow_complete = False
-if 'claim_verdict' not in st.session_state:
-    st.session_state.claim_verdict = ""
-
-st.markdown(f"""
-<div class="main-header">
-    <h1>Fact Checking Agent</h1>
-    <p>Fact checking the claims from the RAG for your convenience</p>
-</div>
-""", unsafe_allow_html=True)
-
-# Sidebar for inputs
-with st.sidebar:
-    st.header("📋 Session Setup")
-    
-    salesperson_id = st.text_input(
-        "Salesperson ID", 
-        value="SP12345",
-        help="Your unique salesperson identifier"
-    )
-    
-    client_context = st.text_area(
-        "Client Context",
-        value="Small e-commerce startup in Singapore looking to understand market opportunities",
-        height=200,
-        help="Describe your client and meeting context"
-    )
-
-    if st.button("Reset Session"):
-        for key in list(st.session_state.keys()):
-            if key != 'session_id':
-                del st.session_state[key]
-        st.session_state.session_id = str(uuid.uuid4())
-        st.success("Session reset!")
-        st.rerun()
-
-# Main content area
-# Display current claim
-if 'claim' in st.session_state:
-    st.header("Claim To Verify")
-    
-    st.write(f"Claim: {st.session_state.claim}")
-    
-    # Verify claim
-    if st.button("Verify claim", type="primary"):
-        try:
-            sg_time = datetime.now(ZoneInfo("Asia/Singapore"))
-            timestamp = sg_time.replace(microsecond=0).isoformat()
-
-            initial_state = FactCheckState(
-                claim_id= str(uuid.uuid4()),  # randomly generated unique ID for the claim
-                original_claim=st.session_state.claim,
-                salesperson_id="SP12345",
-                client_context=client_context,
-                analyzed_claim="",
-                claim_verdict="",
-                evidence_log=[],
-            )
-
-            graph =  StateGraph(FactCheckState)
-
-            # add nodes to graph
-            graph.add_node("analyze", analyze_node)
-            graph.add_node("search", search_claim)
-            graph.add_node("process", process_search_result)
-            graph.add_node("save", save_to_db)
-
-            # add edges to graph
-            graph.add_edge(START, "analyze")
-            graph.add_edge("analyze", "search")
-            graph.add_edge("search", "process")
-            graph.add_edge("process", "save")
-            graph.add_edge("save", END)
-
-            # compile graph
-            app = graph.compile()
-            
-            final_state = None
-
-            progress_bar = st.progress(25)
-            progress_text = st.empty()
-            progress_text.text("Step 1/4: Analyzing claim...")
-            update_count = 0
-            for update in app.stream(initial_state):
-                progress_bar.progress(progress_steps[update_count]["value"])
-                progress_text.text(progress_steps[update_count]["text"])
-                update_count += 1
-                final_state = update
-            
-            final_state = final_state["save"]
-                
-            # 4. SET TO 100% AT THE END
-            progress_bar.progress(progress_steps[-1]["value"])
-            progress_text.text(progress_steps[-1]["text"])
-
-            st.success("Claim verified!")
-            st.session_state.workflow_complete = True
-            st.session_state.claim_verdict = final_state.get("claim_verdict")
-            st.rerun()
-        except Exception as e:
-            st.error(f"Error verifying claim: {str(e)}")
-
-# Display verdicts
-if st.session_state.workflow_complete and st.session_state.claim_verdict:
-    st.header("Claim Verdict")
-    
-    clm = st.session_state.claim_verdict
-    original_claim = st.session_state.claim
-    st.markdown(f"""
-    <div class="material-card">
-        <h4>{original_claim}</h4>
-        <p><strong>Overall Verdict:</strong> {clm['overall_verdict']}</p>
-        <p><strong>Reasoning:</strong> {clm['explanation']}</p>
-        <p><strong>Evidence Used:</strong> {', '.join([ev['source'] for ev in clm.get('main_evidence', [])])}</p>
-        <p><strong>Should you pass to Materials Agent:</strong> {"Yes" if clm['pass_to_materials_agent'] else "No"}
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
-
-
-if st.session_state.workflow_complete:
-    st.header("Continue to Materials Generation")
-    st.write("If you would like to pass this to the materials agent, click the button below to proceed.")
-    if st.button(
-        "Generate Materials from Claim", 
-        type="primary",
-        disabled=not st.session_state.workflow_complete
-    ):
-        # --- Placeholder for passing to materials agent ---
-        with st.spinner("Passing selected claims to Materials Agent..."):
-            # In a real scenario, you would call the pass_to_materials function here
-            # with the selected claims.
-            # For now, we'll just show an info message.
-            st.info(f"Placeholder: Passing claim to the Materials Generation Agent.")
-            # ----------------------------------------------------
-
-# Footer
-st.markdown("---")
-st.markdown("**Fact Checker Agent** | Part of the Rags2Riches AI Sales Assistant Suite")
-
-# Debug information (only show in development)
-if st.checkbox("Show Debug Info"):
-    st.subheader("Debug Information")
-    st.write("Session State:")
-    st.json(dict(st.session_state))

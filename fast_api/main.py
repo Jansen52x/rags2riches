@@ -1,9 +1,22 @@
 import uvicorn
 import json
 import uuid
-from fastapi import FastAPI
-from pydantic import BaseModel
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
+import os
 from fastapi.responses import StreamingResponse
+import logging
+from config import settings
+from typing import Dict, Any, Optional
+from rag_services.embedding_service import EmbeddingService
+from rag_services.llm_service import LLMService
+from rag_services.rag_service import RAGService
+from rag_services.query_builder import QueryBuilder
+
+# Configure logging
+logging.basicConfig(level=settings.LOG_LEVEL)
+logger = logging.getLogger(__name__)
 
 # --- 1. Import agents and their specific types/data ---
 from agents.fact_checker import (
@@ -16,17 +29,42 @@ from agents.fact_checker import (
 
 # --- 2. Build agents ONCE at startup ---
 fact_check_agent_app = get_fact_check_graph()
+embedding_service = EmbeddingService()
+llm_service = LLMService()
+rag_service = RAGService(embedding_service, llm_service)
+query_builder = QueryBuilder(rag_service)
 # rag_agent_app = get_rag_graph()
 # marketing_agent_app = get_marketing_graph()
 
 # --- 3. Create the FastAPI app ---
 app = FastAPI()
 
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # --- 4. Define Request Models (Pydantic) ---
 class FactCheckRequest(BaseModel):
     claim: str
     salesperson_id: str
     client_context: str
+
+class RAGQueryRequest(BaseModel):
+    query: str = Field(..., description="The question to ask")
+    k: Optional[int] = Field(None, description="Number of documents to retrieve")
+    include_sources: bool = Field(True, description="Include source documents in response")
+
+class BuilderQueryRequest(BaseModel):
+    query: str = Field(..., description="The question to ask")
+    filters: Optional[Dict[str, Any]] = Field(None, description="Metadata filters")
+    k: Optional[int] = Field(None, description="Number of results to return")
+    score_threshold: Optional[float] = Field(None, description="Minimum similarity score (0.0-1.0)")
+    include_sources: bool = Field(True, description="Include source documents in response")
 # (Define other request models for RAG, Marketing, etc.)
 
 # --- 5. Define the Streaming Generator ---
@@ -55,7 +93,6 @@ async def stream_fact_check(initial_state: FactCheckState):
             "status_code": 200,
             "final_verdict": claim_verdict
         }
-        print(final_update)
         yield f"{json.dumps(final_update)}\n"
 
     except Exception as e:
@@ -88,6 +125,44 @@ async def check_claim_endpoint(request: FactCheckRequest):
         media_type="application/x-ndjson"
     )
 
+@app.post("/query_rag")
+async def query(request: RAGQueryRequest):
+    """
+    Answer a question using RAG (Retrieval-Augmented Generation)
+
+    Retrieves relevant documents from the vector database and uses an LLM to generate an answer.
+    """
+    try:
+        result = rag_service.query(
+            query=request.query,
+            k=request.k,
+            include_sources=request.include_sources
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Error processing query: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    
+@app.post("/query_rag/builder")
+async def query_with_builder(request: BuilderQueryRequest):
+    """
+    Execute a structured query with filters and advanced options
+
+    Allows filtering by metadata, setting score thresholds, and more control over results.
+    """
+    try:
+        result = query_builder.build_query(
+            query=request.query,
+            filters=request.filters,
+            k=request.k,
+            score_threshold=request.score_threshold,
+            include_sources=request.include_sources
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Error processing builder query: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    
 # --- Add other endpoints for RAG and Marketing ---
 # @app.post("/chat-rag")
 # async def ...

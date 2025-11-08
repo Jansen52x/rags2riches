@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 import logging
-from config import settings
+from fast_api.config import settings
 from embedding_service import EmbeddingService
 from llm_service import LLMService
 from rag_service import RAGService

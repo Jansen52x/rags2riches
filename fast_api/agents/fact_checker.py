@@ -19,6 +19,7 @@ from dotenv import load_dotenv
 import os
 import sys
 from ddgs import DDGS
+import requests
 
 # Load variables from secrets.env
 load_dotenv("secrets.env")
@@ -42,7 +43,6 @@ class FactCheckState(TypedDict):
 
 
 # --- 2. Node Functions (The actual work) ---
-# (Replace these with your real, imported agent logic)
 async def analyze_node(state: FactCheckState) -> Command:
     print("Step 1/4: Analyzing claim...")
     """Analyse the claim and normalise it if needed + Identify sourcing strategy"""
@@ -83,26 +83,26 @@ async def analyze_node(state: FactCheckState) -> Command:
     response = await llm.ainvoke(prompt)
 
     try:
-        claim = json.loads(response.content)
+        analyzed_claim = json.loads(response.content)
     except json.JSONDecodeError:
         # fallback in case the LLM outputs plain text instead of valid JSON
-        claim = response.content
+        analyzed_claim = response.content
 
     print(f"Claim analysis complete")
-
     return Command(
-        update={"analyzed_claim": claim}
+        update={"analyzed_claim": analyzed_claim}
     )
 
 async def search_claim(state: FactCheckState) -> FactCheckState:
-    print(f"Step 2/4: Starting search for claim: {claim}...")
+    print(f"Step 2/4: Starting search for claim...")
     """Search for claim with its strategy"""
+    
     analyzed_claim = state['analyzed_claim']
     claim = analyzed_claim['claim']
     strategy = analyzed_claim['analysis']
     
     prompt = f"""
-    You are fact-checking this claim: "{claim}"
+    You are fact-checking this claim: {claim}
 
     REQUIREMENTS:
     - Find at least {strategy.get('num_sources_needed', 3)} credible sources
@@ -228,34 +228,47 @@ async def save_to_db(state: FactCheckState) -> Command:
     verdict = state.get("claim_verdict")
     salesperson_id = state.get("salesperson_id")
     claim_id = state.get("claim_id")
+    original_claim = state.get("original_claim", "Unknown Claim")
     
     try: 
-        async with await psycopg.AsyncConnection.connect("dbname=claim_verifications user=fact-checker password=fact-checker host=localhost port=5432") as aconn:
-            
-            original_claim = verdict.get('claim', 'Unknown Claim')
-            verdict_str = str(verdict.get('overall_verdict', '')).upper()
-            overall_bool = True if verdict_str == 'TRUE' else False
+        async with await psycopg.AsyncConnection.connect(
+            f"dbname={os.getenv('POSTGRES_DB')} "
+            f"user={os.getenv('POSTGRES_USER')} "
+            f"password={os.getenv('POSTGRES_PASSWORD')} "
+            f"host={os.getenv('POSTGRES_HOST')} "
+            f"port={os.getenv('POSTGRES_PORT')}"
+        ) as aconn:
+            # Extract data from verdict
+            original_claim = state.get('claim', 'Unknown Claim')
+            overall_verdict = str(verdict.get('overall_verdict', 'Cannot be determined')).upper()
             evidence_json = json.dumps(verdict.get('main_evidence', []))
             pass_to_materials = verdict.get('pass_to_materials_agent', False)
             
+            # Insert into database
             await aconn.execute(
-                "INSERT INTO claim_verifications (original_claim, original_claim_id, salesperson_id, overall_verdict, explanation, main_evidence, pass_to_materials_agent) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                """
+                INSERT INTO claim_verifications 
+                (original_claim, original_claim_id, salesperson_id, overall_verdict, 
+                 explanation, main_evidence, pass_to_materials_agent) 
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """,
                 (
                     original_claim,
-                    salesperson_id,
                     claim_id,
-                    overall_bool,
-                    verdict.get('explanation'),
+                    salesperson_id,
+                    overall_verdict,
+                    verdict.get('explanation', ''),
                     evidence_json,
                     pass_to_materials
                 )
             )
-            print(f"Verdict saved to database (async) (pass_to_materials_agent: {pass_to_materials})")
-
-    except Exception as e:
-        print(f"Error saving verdict to database: {e}")
-        return Command(update={"claim_verdict": verdict}, goto=END)
             
+            print(f"✅ Verdict saved to database (verdict: {overall_verdict}, pass_to_materials_agent: {pass_to_materials})")
+            
+    except Exception as e:
+        print(f"❌ Error saving verdict to database: {e}")
+        # Continue execution even if database save fails
+    
     return Command(update={"claim_verdict": verdict}, goto=END)
 
 # --- 3. Progress Steps (Specific to this agent) ---
@@ -433,7 +446,13 @@ async def tavily_search(query: str) -> str:
 def _blocking_query_rag_system(refined_query: str) -> str:
     """Internal blocking function for RAG query."""
     print(f"Querying RAG system (blocking thread) with: {refined_query}")
-    # Mock response
+    response = requests.post(
+        "http://localhost:8000/query-rag",
+        json={"query": refined_query, "k": 5, "include_sources": False}
+    )
+    if response.answer:
+        return response.answer
+    
     return "No additional info available from source documents."
 
 @tool
