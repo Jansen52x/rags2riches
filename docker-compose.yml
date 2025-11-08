@@ -89,6 +89,9 @@ services:
     depends_on:
       - postgres
       - chromadb
+    volumes:
+      # Persist generated content (charts, AI images, videos)
+      - ./fast_api/generated_content:/app/generated_content
     environment:
       - POSTGRES_USER=fact-checker
       - POSTGRES_PASSWORD=fact-checker

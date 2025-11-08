@@ -14,3 +14,12 @@ python-dotenv
 lxml_html_clean
 fastapi
 uvicorn
+# Materials + Content Generation Dependencies
+plotly==5.24.1
+kaleido
+moviepy
+pillow
+replicate
+requests
+numpy
+langchain-anthropic
