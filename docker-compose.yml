@@ -61,7 +61,7 @@ services:
     environment:
       PGADMIN_DEFAULT_EMAIL: admin@admin.com
       PGADMIN_DEFAULT_PASSWORD: admin
-      PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_CONFIG_SERVER_MODE: "False"
     ports:
       - "5050:80"
     volumes:
@@ -97,6 +97,9 @@ services:
     depends_on:
       - postgres
       - chromadb
+    volumes:
+      # Persist generated content (charts, AI images, videos)
+      - ./fast_api/generated_content:/app/generated_content
     environment:
       - POSTGRES_USER=fact-checker
       - POSTGRES_PASSWORD=fact-checker
@@ -128,6 +131,22 @@ services:
   #   ports:
   #     - "5001:5001"
   #   restart: unless-stopped
+
+  image-video-agent:
+    env_file:
+      - ./secrets.env
+    build:
+      context: ./image-video-agent
+      dockerfile: Dockerfile
+    container_name: image-video-agent
+    environment:
+      - OLLAMA_HOST=http://host.docker.internal:11434
+    volumes:
+      # Mount generated content directory to persist files
+      - ./image-video-agent/generated_content:/app/generated_content
+    restart: unless-stopped
+    networks:
+      - agent_network
 
 volumes:
   pg_data:

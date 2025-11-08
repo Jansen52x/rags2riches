@@ -1,0 +1,12 @@
+langchain
+langgraph
+langchain-anthropic
+plotly==5.24.1
+kaleido
+moviepy
+pillow
+replicate
+requests
+python-dotenv
+numpy
+openai

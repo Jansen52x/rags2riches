@@ -7,6 +7,7 @@ import pandas as pd
 import os
 import time
 import random
+import csv
 
 # Load environment variables from .env file
 try:
@@ -33,6 +34,23 @@ fake = Faker()
 # Configuration - Load from environment variables
 USE_GEMINI = os.environ.get('USE_GEMINI_AI', 'true').lower() == 'true'
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', None)
+
+# Always load seed companies from CSV (real companies like Microsoft, Shopee, etc.)
+SEED_FILE = os.path.join(os.path.dirname(__file__), 'seed_companies.csv')
+_seed_companies = []
+if os.path.exists(SEED_FILE):
+    try:
+        with open(SEED_FILE, newline='', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            _seed_companies = [row for row in reader if row.get('company_name')]
+        if _seed_companies:
+            print(f"✓ Loaded {len(_seed_companies)} seed companies from CSV (will use Gemini for these)")
+        else:
+            print(f"⚠️ No seed companies found in {SEED_FILE}")
+    except Exception as e:
+        print(f"⚠️ Failed to load seed companies: {e}")
+else:
+    print(f"⚠️ Seed file not found: {SEED_FILE}")
 
 # Initialize Gemini if available and configured
 gemini_model = None
@@ -115,15 +133,99 @@ def generate_client_record_with_faker():
     }
 
 
+def _normalize_domain(company_name: str) -> str:
+    """Infer a simple domain from a company name (fallback if domain not provided)."""
+    base = ''.join(ch.lower() for ch in company_name if ch.isalnum() or ch.isspace()).replace(' ', '')
+    if not base:
+        base = 'example'
+    return f"{base}.com"
+
+
+def generate_client_from_seed(index):
+    """Generate a client record using a seeded (real) company entry from `seed_companies.csv`.
+
+    Args:
+        index (int): The index of the seed company to use
+    
+    All data comes from the CSV - NO FAKE DATA for real companies.
+    CSV columns: company_name, industry, domain, description, contact_email, phone
+    """
+    if not _seed_companies or index >= len(_seed_companies):
+        return None  # Return None if no seed company available
+
+    seed = _seed_companies[index]
+    company_name = seed.get('company_name')
+    industry = seed.get('industry')
+    domain = seed.get('domain')
+    contact_email = seed.get('contact_email', f"contact@{domain}")
+    phone = seed.get('phone', 'N/A')
+    company_description = seed.get('description', '')
+
+    # Validate we have required fields
+    if not company_name or not industry:
+        print(f"⚠️ Incomplete seed company data at index {index}, skipping")
+        return None
+
+    return {
+        'company_name': company_name,
+        'industry': industry,
+        'contact_email': contact_email,
+        'phone': phone,
+        'domain': domain,
+        'company_description': company_description,
+        'is_seed': True  # Flag to indicate this is from seed CSV (real company)
+    }
+
+
+# Track which company we're generating (for seed vs synthetic)
+_company_counter = 0
+_gemini_failed_for_seed = False  # Track if Gemini failed for any seed company
+
 def generate_client_record():
     """
-    Generates a synthetic client record.
-    Uses Gemini AI if available, otherwise falls back to Faker.
+    Generates a client record using seed companies first, then synthetic ones.
+    - Seed companies (from CSV): 100% real data, use Gemini for documents
+    - Synthetic companies (Faker): Fake data, use Faker for documents
+    
+    If Gemini fails for a seed company's documents, we skip remaining seed companies
+    and move directly to synthetic companies.
     """
-    if gemini_model is not None:
-        return generate_client_record_with_gemini()
-    else:
+    global _company_counter, _gemini_failed_for_seed
+    
+    # If Gemini already failed for a seed company, skip to synthetic
+    if _gemini_failed_for_seed:
+        _company_counter += 1
         return generate_client_record_with_faker()
+    
+    # If we still have seed companies to use, return one
+    if _company_counter < len(_seed_companies):
+        seed_company = generate_client_from_seed(_company_counter)
+        _company_counter += 1
+        if seed_company is None:
+            # Skip this seed company, try next
+            return generate_client_record()
+        return seed_company
+    
+    # Otherwise, generate synthetic company with Faker
+    _company_counter += 1
+    return generate_client_record_with_faker()
+
+
+def mark_gemini_failed():
+    """Mark that Gemini has failed for a seed company - skip remaining seed companies."""
+    global _gemini_failed_for_seed
+    _gemini_failed_for_seed = True
+    print("\n" + "="*80)
+    print("⚠️ GEMINI RATE LIMIT REACHED")
+    print("   Skipping remaining real companies and switching to synthetic data generation")
+    print("="*80 + "\n")
+
+
+def reset_company_counter():
+    """Reset the company counter (useful for testing or regeneration)."""
+    global _company_counter, _gemini_failed_for_seed
+    _company_counter = 0
+    _gemini_failed_for_seed = False
 
 
 def generate_industry_overview_with_gemini(industry):
@@ -188,16 +290,26 @@ def generate_industry_overview(industry):
 def generate_synthetic_dataset(num_records=75):
     """
     Generates a complete synthetic dataset with client data and industry overviews.
+    First uses all seed companies from CSV (with is_seed=True), then generates synthetic ones.
     
     Args:
-        num_records (int): Number of records to generate (default: 75)
+        num_records (int): Total number of records to generate (default: 75)
         
     Returns:
         pd.DataFrame: DataFrame containing synthetic data
     """
-    synthetic_data = []
+    # Reset counter to ensure we start from the first seed company
+    reset_company_counter()
     
-    for _ in range(num_records):
+    synthetic_data = []
+    num_seed = len(_seed_companies)
+    
+    print(f"\n📊 Generation Plan:")
+    print(f"   - First {num_seed} companies: Real companies from CSV (using Gemini for documents)")
+    print(f"   - Remaining {num_records - num_seed} companies: Synthetic (using Faker for documents)")
+    print()
+    
+    for i in range(num_records):
         client_data = generate_client_record()
         industry_overview = generate_industry_overview(client_data['industry'])
         synthetic_data.append({

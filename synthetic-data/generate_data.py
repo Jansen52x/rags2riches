@@ -92,7 +92,20 @@ def main(num_records=75, output_dir='output', generate_images=True, generate_pdf
         doc_count = 0
         for idx, row in df_synthetic.iterrows():
             client_data = row['client_data']
-            documents = generate_all_documents_for_company(client_data, docs_per_company)
+            
+            # Use Gemini for seed companies (real companies), Faker for synthetic ones
+            is_seed_company = client_data.get('is_seed', False)
+            documents = generate_all_documents_for_company(
+                client_data, 
+                docs_per_company, 
+                use_gemini=is_seed_company
+            )
+            
+            # If documents is None, Gemini failed for a seed company - skip it
+            if documents is None:
+                company_name = client_data.get('company_name', 'Unknown')
+                print(f"  ⏭️  Skipped real company '{company_name}' (Gemini limit reached)")
+                continue
             
             for doc_idx, doc in enumerate(documents):
                 doc['company_id'] = idx

@@ -8,7 +8,7 @@ import os
 from fastapi.responses import StreamingResponse
 import logging
 from config import settings
-from typing import Dict, Any, Optional
+from typing import List, Dict, Any, Optional
 from rag_services.embedding_service import EmbeddingService
 from rag_services.llm_service import LLMService
 from rag_services.rag_service import RAGService
@@ -26,6 +26,10 @@ from agents.fact_checker import (
 )
 # from .agents.rag_agent import get_rag_graph, RagState, ...
 # from .agents.marketing_agent import get_marketing_graph, ...
+from agents.materials_decision_agent import (
+    create_materials_decision_workflow,
+    MaterialsDecisionState
+)
 
 # --- 2. Build agents ONCE at startup ---
 fact_check_agent_app = get_fact_check_graph()
@@ -65,6 +69,12 @@ class BuilderQueryRequest(BaseModel):
     k: Optional[int] = Field(None, description="Number of results to return")
     score_threshold: Optional[float] = Field(None, description="Minimum similarity score (0.0-1.0)")
     include_sources: bool = Field(True, description="Include source documents in response")
+
+class MaterialsRequest(BaseModel):
+    verified_claims: List[Dict]
+    salesperson_id: str
+    client_context: str
+    user_prompt: Optional[str] = None
 # (Define other request models for RAG, Marketing, etc.)
 
 # --- 5. Define the Streaming Generator ---
@@ -163,7 +173,64 @@ async def query_with_builder(request: BuilderQueryRequest):
         logger.error(f"Error processing builder query: {e}")
         raise HTTPException(status_code=500, detail=str(e))
     
-# --- Add other endpoints for RAG and Marketing ---
+@app.post("/generate-materials")
+async def generate_materials_endpoint(request: MaterialsRequest):
+    """
+    Generate marketing materials based on verified claims.
+    This orchestrates both materials decision + content generation.
+    
+    Flow:
+    1. Analyze claims → Recommend materials
+    2. Prioritize based on time constraints  
+    3. Create generation queue
+    4. Trigger content generation (charts, AI images, videos)
+    5. Save decisions to database
+    6. Return generated file paths
+    """
+    try:
+        # Create initial state for materials decision workflow
+        initial_state = MaterialsDecisionState(
+            session_id=str(uuid.uuid4()),
+            salesperson_id=request.salesperson_id,
+            client_context=request.client_context,
+            user_prompt=request.user_prompt,
+            verified_claims=request.verified_claims,
+            material_recommendations=[],
+            selected_materials=[],
+            generation_queue=[],
+            decision_complete=False,
+            user_feedback=None
+        )
+        
+        # Create and run the workflow
+        print(f"\n🚀 Starting materials generation for {len(request.verified_claims)} verified claims...")
+        workflow = create_materials_decision_workflow()
+        final_state = workflow.invoke(initial_state)
+        
+        print(f"✅ Materials generation complete!")
+        print(f"   Generated {len(final_state.get('generated_files', []))} files")
+        
+        return {
+            "status": "success",
+            "session_id": final_state["session_id"],
+            "generated_files": final_state.get("generated_files", []),
+            "generation_count": len(final_state.get("generated_files", [])),
+            "recommendations": final_state["material_recommendations"],
+            "selected_materials": final_state["selected_materials"],
+            "generation_status": final_state.get("generation_status", "completed")
+        }
+        
+    except Exception as e:
+        import traceback
+        print(f"\n❌ Error in generate_materials_endpoint: {str(e)}")
+        traceback.print_exc()
+        return {
+            "status": "error",
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
+# --- Add other endpoints for RAG ---
 # @app.post("/chat-rag")
 # async def ...
 #
