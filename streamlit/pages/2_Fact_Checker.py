@@ -5,14 +5,6 @@ import uuid
 from datetime import datetime
 from zoneinfo import ZoneInfo 
 
-# Streamlit page config
-st.set_page_config(
-    page_title="Fact Checker",
-    # page_icon="🎯",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
 # Custom CSS for better styling
 st.markdown("""
 <style>
@@ -45,16 +37,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- Session State Initialization (Good, keep this) ---
-if 'session_id' not in st.session_state:
-    st.session_state.session_id = str(uuid.uuid4())
-if 'claim' not in st.session_state:
-    st.session_state.claim = "Shopee has a terrible working culture"
-if 'workflow_complete' not in st.session_state:
-    st.session_state.workflow_complete = False
-if 'claim_verdict' not in st.session_state:
-    st.session_state.claim_verdict = ""
-
 # --- UI (Good, keep all this) ---
 st.markdown(f"""
 <div class="main-header">
@@ -62,6 +44,13 @@ st.markdown(f"""
     <p>Fact checking the claims from the RAG for your convenience</p>
 </div>
 """, unsafe_allow_html=True)
+
+if 'workflow_complete' not in st.session_state:
+    st.session_state.workflow_complete = False
+if 'claim_verdict' not in st.session_state:
+    st.session_state.claim_verdict = None
+if 'claim' not in st.session_state:
+    st.session_state.claim = ""
 
 with st.sidebar:
     st.header("📋 Session Setup")
@@ -85,7 +74,7 @@ if 'claim' in st.session_state:
         
         # --- This is the Sample Request you asked for ---
         # 1. Define the API endpoint
-        API_URL = "http://fastapi_service:8000/check-claim"
+        API_URL = "http://fastapi_service:8001/check-claim"
         
         # 2. Define the JSON payload
         payload = {
@@ -129,7 +118,7 @@ if 'claim' in st.session_state:
             if final_verdict:
                 st.success("Claim verified!")
                 st.session_state.workflow_complete = True
-                st.session_state.claim_verdict = final_verdict
+                st.session_state.claim_verdict = final_verdict["claim_verdict"]
                 st.rerun()
             else:
                 st.error("Failed to get a final verdict from the agent.")
@@ -146,6 +135,7 @@ if st.session_state.workflow_complete and st.session_state.claim_verdict:
     st.header("Claim Verdict")
     clm = st.session_state.claim_verdict
     original_claim = st.session_state.claim
+
     st.markdown(f"""
     <div class="material-card">
         <h4>{original_claim}</h4>

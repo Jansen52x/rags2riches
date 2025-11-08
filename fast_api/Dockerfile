@@ -17,4 +17,4 @@ COPY . .
 # It tells uvicorn to run the 'app' object from the 'app.main' file
 # --host 0.0.0.0 is MANDATORY. It tells it to listen to requests
 # from *outside* the container (i.e., from the Streamlit app).
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001"]

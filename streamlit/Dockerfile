@@ -18,4 +18,4 @@ COPY . .
 # --server.port 8501 matches our docker-compose.yml
 # --server.address 0.0.0.0 is MANDATORY.
 EXPOSE 8501
-CMD ["streamlit", "run", "1_RAG_Agent.py", "--server.port=8501", "--server.address=0.0.0.0"]
+CMD ["streamlit", "run", "1_RAG.py", "--server.port=8501", "--server.address=0.0.0.0"]

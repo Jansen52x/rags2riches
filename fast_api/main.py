@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from fastapi.responses import StreamingResponse
 
 # --- 1. Import agents and their specific types/data ---
-from .agents.fact_checker import (
+from agents.fact_checker import (
     get_fact_check_graph, 
     FactCheckState, 
     AGENT_PROGRESS_STEPS
@@ -39,7 +39,7 @@ async def stream_fact_check(initial_state: FactCheckState):
         update_count = 0
         final_state = None
         # Use the imported agent app
-        async for update in app.astream(initial_state):
+        async for update in fact_check_agent_app.astream(initial_state):
             progress_data = AGENT_PROGRESS_STEPS[update_count].copy()
             progress_data["type"] = "progress"
             yield f"{json.dumps(progress_data)}\n"
@@ -55,6 +55,7 @@ async def stream_fact_check(initial_state: FactCheckState):
             "status_code": 200,
             "final_verdict": claim_verdict
         }
+        print(final_update)
         yield f"{json.dumps(final_update)}\n"
 
     except Exception as e:

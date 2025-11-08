@@ -12,3 +12,5 @@ psycopg[binary]
 ddgs
 python-dotenv
 lxml_html_clean
+fastapi
+uvicorn

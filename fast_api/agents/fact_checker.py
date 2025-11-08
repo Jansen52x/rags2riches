@@ -80,13 +80,13 @@ async def analyze_node(state: FactCheckState) -> Command:
     Claim: "{claim}"
     Client Context (for background only): "{client_context}"
     """
-    response = await llm.ainvoke(prompt).content
+    response = await llm.ainvoke(prompt)
 
     try:
-        claim = json.loads(response)
+        claim = json.loads(response.content)
     except json.JSONDecodeError:
         # fallback in case the LLM outputs plain text instead of valid JSON
-        claim = response
+        claim = response.content
 
     print(f"Claim analysis complete")
 
@@ -95,36 +95,44 @@ async def analyze_node(state: FactCheckState) -> Command:
     )
 
 async def search_claim(state: FactCheckState) -> FactCheckState:
-    print("Step 2/4: Starting search for claim: {claim}...")
+    print(f"Step 2/4: Starting search for claim: {claim}...")
     """Search for claim with its strategy"""
     analyzed_claim = state['analyzed_claim']
     claim = analyzed_claim['claim']
     strategy = analyzed_claim['analysis']
     
     prompt = f"""
-    You are fact-checking this claim: {claim}
-    You need:
-    - {strategy['num_sources_needed']} credible sources at minimum
-    - to prioritise these source types: {', '.join(strategy['source_types'])}
-    - to focus on these types of information: {', '.join(strategy['focus_areas'])}
-    
-    You are given a set of tools that allow you to search the web and find the best sources to fact-check this claim. 
-    You MUST use these tools and their output as a base to formulate your claim
-    You may also query the RAG system that provided this claim in the first place if the web search does not yield sufficient information
-    You may use the tools as many times as needed to make a verdict, or to determine that you cannot make a verdict.
-    Make your queries simple so that it is easy to get relevant results, then be more specific if there are too many. 
-    Do not call the same tool with the same query as it will definitely give you the same results.
-    
-    Be sure to evaluate the sources for credibility and relevance.
-    
-    Provide your verdict with the following information:
-    1. Overall Verdict: TRUE, FALSE, or CANNOT BE DETERMINED
-    2. Explanation: A concise explanation of how you arrived at the verdict
+    You are fact-checking this claim: "{claim}"
 
-    If you cannot make a claim based on the sources then just say "CANNOT BE DETERMINED". An absence of evidence does not necessarily mean it's false, so think critically.
+    REQUIREMENTS:
+    - Find at least {strategy.get('num_sources_needed', 3)} credible sources
+    - Prioritize these source types: {', '.join(strategy.get('source_types', ['news', 'academic', 'government']))}
+    - Focus on: {', '.join(strategy.get('focus_areas', ['accuracy', 'context']))}
+
+    TOOLS:
+    - Use the web search tools to find sources
+    - Start with simple, broad queries, then refine if needed
+    - Do NOT repeat identical queries for the same tool (same input = same output)
+    - Stop after 5-7 unique searches if you haven't found sufficient reliable information
+
+    EVALUATION CRITERIA:
+    - Assess source credibility (authoritative, recent, primary when possible)
+    - Look for corroboration across multiple independent sources
+    - If sources conflict, note this and weigh by credibility
+    - Absence of evidence ≠ evidence of falseness (think critically about what would be documented)
+
+
+    VERDICT RULES:
+    - TRUE: Multiple credible sources confirm the claim
+    - FALSE: Credible sources clearly contradict the claim
+    - CANNOT BE DETERMINED: Insufficient evidence, conflicting reliable sources, or absence of information
+
+    OUTPUT FORMAT:
+    1. Overall Verdict: TRUE, FALSE, or CANNOT BE DETERMINED
+    2. Explanation: A concise explanation of how you arrived at the verdict    
     """
-    
-    response = agent.ainvoke(
+
+    response = await agent.ainvoke(
         {"messages": [{"role": "user", "content": prompt}]}
     )
 
@@ -200,13 +208,13 @@ async def process_search_result(state: FactCheckState) -> FactCheckState:
     Do not provide any other text outside the JSON block. Do not write code.
     """
 
-    response = llm.ainvoke(prompt).content
+    response = await llm.ainvoke(prompt)
     try:
-        claim_result = json.loads(response)
+        claim_result = json.loads(response.content)
         
     except json.JSONDecodeError:
         # fallback in case the LLM outputs plain text instead of valid JSON
-        claim_result = response
+        claim_result = response.content
 
     print("Processed search result for claim.")
     
