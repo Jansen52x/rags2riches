@@ -1,0 +1,32 @@
+company_name,industry,domain,description,contact_email,phone
+Microsoft,Cloud Computing & Software,microsoft.com,"Leading technology company providing cloud services, software, and enterprise solutions worldwide.",support@microsoft.com,+1-800-642-7676
+Apple,Consumer Electronics & Software,apple.com,"Designs and manufactures consumer electronics, computer software, and online services.",support@apple.com,+1-800-275-2273
+Amazon,E-commerce & Cloud Computing,amazon.com,"Global e-commerce and cloud computing leader offering retail, AWS, and digital streaming services.",customer-service@amazon.com,+1-888-280-4331
+Google,Internet Services & Technology,google.com,"Specializes in Internet-related services including search, advertising, cloud computing, and AI.",support@google.com,+1-650-253-0000
+Meta,Social Media & Technology,meta.com,"Social technology company focused on building connections through Facebook, Instagram, and virtual reality.",support@meta.com,+1-650-543-4800
+Tesla,Electric Vehicles & Clean Energy,tesla.com,"Designs and manufactures electric vehicles, battery energy storage, and solar products.",support@tesla.com,+1-888-518-3752
+Netflix,Streaming Entertainment,netflix.com,"Provides subscription-based streaming service offering movies, TV series, and original content.",info@netflix.com,+1-866-579-7172
+Nvidia,Graphics Processing & AI,nvidia.com,"Designs graphics processing units for gaming and professional markets, and AI computing platforms.",support@nvidia.com,+1-408-486-2000
+Intel,Semiconductor Manufacturing,intel.com,"Designs and manufactures microprocessors and other semiconductor components for computing devices.",support@intel.com,+1-408-765-8080
+IBM,Enterprise Technology & Consulting,ibm.com,"Provides enterprise software, hardware, cloud computing, and IT consulting services.",support@ibm.com,+1-800-426-4968
+Oracle,Enterprise Software & Cloud,oracle.com,"Develops enterprise software products, database management systems, and cloud solutions.",contact@oracle.com,+1-800-392-2999
+Salesforce,Customer Relationship Management,salesforce.com,"Cloud-based software company specializing in CRM and enterprise applications.",support@salesforce.com,+1-800-667-6389
+Adobe,Creative Software & Digital Marketing,adobe.com,"Develops multimedia and creativity software, digital marketing tools, and document solutions.",support@adobe.com,+1-800-833-6687
+Cisco,Networking & Communications,cisco.com,"Designs and sells networking hardware, telecommunications equipment, and cybersecurity solutions.",support@cisco.com,+1-408-526-4000
+SAP,Enterprise Resource Planning,sap.com,"Develops enterprise software to manage business operations and customer relations.",support@sap.com,+1-800-872-1727
+Shopify,E-commerce Platform,shopify.com,"Provides e-commerce platform for online stores and retail point-of-sale systems.",support@shopify.com,+1-888-746-7439
+Spotify,Music Streaming,spotify.com,"Digital music streaming service providing access to millions of songs and podcasts.",support@spotify.com,+46-8-120-249-80
+Airbnb,Hospitality & Travel,airbnb.com,"Online marketplace for short-term homestays and experiences in various locations worldwide.",support@airbnb.com,+1-844-234-2500
+Uber,Ride-sharing & Delivery,uber.com,"Provides ride-sharing, food delivery, package delivery, and freight transportation services.",support@uber.com,+1-800-593-7069
+PayPal,Digital Payments,paypal.com,"Online payment system supporting money transfers and serving as electronic alternative to traditional methods.",support@paypal.com,+1-888-221-1161
+Square,Financial Services & Payments,squareup.com,"Financial services and mobile payment company offering point-of-sale systems and business tools.",support@squareup.com,+1-855-700-6000
+Zoom,Video Communications,zoom.us,"Provides video conferencing, online meetings, and cloud phone system services.",support@zoom.us,+1-888-799-9666
+Slack,Business Communication,slack.com,"Cloud-based collaboration platform and messaging service for teams and businesses.",support@slack.com,+1-800-531-0228
+Dropbox,Cloud Storage & Collaboration,dropbox.com,"File hosting service offering cloud storage, file synchronization, and collaboration tools.",support@dropbox.com,+1-866-277-6906
+Stripe,Payment Processing,stripe.com,"Technology company building economic infrastructure for the internet and online payment processing.",support@stripe.com,+1-888-926-2289
+Atlassian,Software Development Tools,atlassian.com,"Develops collaboration software for teams including Jira, Confluence, and Trello.",support@atlassian.com,+1-800-701-7211
+Snowflake,Data Cloud & Analytics,snowflake.com,"Cloud-based data warehousing company providing data storage, processing, and analytics solutions.",support@snowflake.com,+1-844-766-9355
+Datadog,Monitoring & Analytics,datadoghq.com,"Monitoring and analytics platform for developers, IT operations, and business users.",support@datadoghq.com,+1-866-329-4466
+ServiceNow,Enterprise Cloud Solutions,servicenow.com,"Cloud computing platform helping companies manage digital workflows for enterprise operations.",support@servicenow.com,+1-877-859-4367
+Twilio,Cloud Communications,twilio.com,"Cloud communications platform providing programmable communication tools for voice, messaging, and video.",support@twilio.com,+1-888-908-9454
+Shopee,E-commerce & Online Marketplace,shopee.sg,"Leading e-commerce platform in Southeast Asia and Taiwan, offering online shopping, logistics, and digital payment services.",support@shopee.sg,+65-6805-6000
