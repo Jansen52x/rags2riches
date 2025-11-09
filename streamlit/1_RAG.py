@@ -135,6 +135,19 @@ if 'rag_results' in st.session_state:
         """, unsafe_allow_html=True)
         st.markdown("")  # Spacing
 
+        # Add fact-check button for the answer
+        col_fact1, col_fact2 = st.columns([1, 3])
+        with col_fact1:
+            if st.button("🔍 Fact-Check This Answer", type="secondary", use_container_width=True):
+                # Save the answer as a claim to verify
+                st.session_state.claim = results['answer']
+                st.session_state.rag_context = query_text  # Save original query for context
+                st.switch_page("pages/2_Fact_Checker.py")
+        with col_fact2:
+            st.caption("Verify this answer using web search and external sources")
+
+        st.markdown("")  # Spacing
+
     # Display sources
     if include_sources and 'sources' in results and results['sources']:
         st.markdown("---")
@@ -181,14 +194,20 @@ if 'rag_results' in st.session_state:
                 )
 
                 st.markdown("")  # Spacing
-                
+
                 # Action buttons
-                col_action1, col_action2 = st.columns(2)
+                col_action1, col_action2, col_action3 = st.columns(3)
                 with col_action1:
                     if st.button(f"📋 Copy to Materials", key=f"copy_{i}"):
                         st.info(f"Added source {i} to materials context")
                 with col_action2:
-                    if st.button(f"🔗 View Full Document", key=f"view_{i}"):
+                    if st.button(f"🔍 Fact-Check", key=f"fact_check_{i}"):
+                        # Extract key claims from the source content
+                        st.session_state.claim = source.get('content', '')[:500]  # Limit to first 500 chars
+                        st.session_state.rag_context = f"Query: {query_text}\nSource: {metadata.get('company_name', 'Unknown')}"
+                        st.switch_page("pages/2_Fact_Checker.py")
+                with col_action3:
+                    if st.button(f"🔗 View Full", key=f"view_{i}"):
                         st.info(f"Document ID: {source.get('id', 'N/A')}")
             
             st.markdown("")  # Spacing between expanders

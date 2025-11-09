@@ -64,10 +64,17 @@ if 'verifying_claim' not in st.session_state:
 with st.sidebar:
     st.header("📋 Session Setup")
     salesperson_id = st.text_input("Salesperson ID", value="SP12345")
+
+    # Pre-fill client context with RAG context if available
+    default_context = "Small e-commerce startup in Singapore..."
+    if 'rag_context' in st.session_state:
+        default_context = st.session_state.rag_context
+
     client_context = st.text_area(
         "Client Context",
-        value="Small e-commerce startup in Singapore...",
-        height=200
+        value=default_context,
+        height=200,
+        help="This context helps the fact-checker understand what to verify. Auto-filled from RAG if you came from there."
     )
     if st.button("Reset Session"):
         st.session_state.clear()
@@ -76,7 +83,18 @@ with st.sidebar:
 # --- Main Content Area ---
 if 'claim' in st.session_state:
     st.header("Claim To Verify")
-    st.write(f"Claim: {st.session_state.claim}")
+
+    # Show if this came from RAG
+    if 'rag_context' in st.session_state:
+        st.info(f"📚 **From RAG Query:** {st.session_state.rag_context}")
+        st.markdown("")
+
+    st.markdown(f"""
+    <div style="background-color: #000000; padding: 1.5rem; border-radius: 10px; border-left: 5px solid #ff7f0e;">
+        <strong>Claim:</strong> {st.session_state.claim}
+    </div>
+    """, unsafe_allow_html=True)
+    st.markdown("")
 
     # ===== THIS IS THE MODIFIED PART =====
     if st.button("Verify claim", type="primary", disabled=st.session_state.verifying_claim):
