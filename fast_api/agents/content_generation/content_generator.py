@@ -316,7 +316,10 @@ class ContentGenerator:
         """Generate unique filename for output"""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         client_name = spec.get('client_name', 'client').replace(' ', '_')
-        return self.output_dir / f"{client_name}_{content_type}_{timestamp}.png"    
+        target_dir = self.output_dir / "images"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        return target_dir / f"{client_name}_{content_type}_{timestamp}.png"
+    
     def _generate_video_presentation(self, spec: Dict) -> str:
         """
         Generate a video presentation from a list of images
@@ -369,7 +372,9 @@ class ContentGenerator:
         # Generate output filename
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         client_name = spec.get('client_name', 'client').replace(' ', '_')
-        filename = self.output_dir / f"{client_name}_video_presentation_{timestamp}.mp4"
+        videos_dir = self.output_dir / "videos"
+        videos_dir.mkdir(parents=True, exist_ok=True)
+        filename = videos_dir / f"{client_name}_video_presentation_{timestamp}.mp4"
         
         # Write video file
         final_video.write_videofile(

@@ -122,7 +122,10 @@ initial_state = MaterialsDecisionState(
     material_recommendations=[],
     selected_materials=[],
     generation_queue=[],
-    decision_complete=False
+  generated_files=[],
+  generation_status=None,
+  decision_complete=False,
+  user_feedback=None
 )
 
 # Run workflow

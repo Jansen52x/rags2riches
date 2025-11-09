@@ -1,0 +1,141 @@
+[
+  {
+    "scenario_id": "scenario_001_market_and_share",
+    "description": "Multiple claims covering market size and market leadership for an SEA pitch.",
+    "client_context": "Regional e-commerce expansion briefing for a Singapore retail prospect.",
+    "verified_claims": [
+      {
+        "claim_id": "claim_001",
+        "claim": "Singapore's e-commerce market reached SGD 9 billion in 2023",
+        "verdict": "TRUE",
+        "confidence": 0.92,
+        "evidence": [
+          {
+            "source": "GovTech Singapore",
+            "summary": "2023 digital commerce spending hit SGD 9B."
+          }
+        ]
+      },
+      {
+        "claim_id": "claim_002",
+        "claim": "Shopee leads the local market share for e-commerce platforms",
+        "verdict": "TRUE",
+        "confidence": 0.88,
+        "evidence": [
+          {
+            "source": "Tech in Asia",
+            "summary": "Shopee holds 35% market share in Singapore."
+          }
+        ]
+      }
+    ],
+    "expected_material_types": [
+      "chart",
+      "slide",
+      "infographic",
+      "presentation_deck"
+    ],
+    "expected_high_priority_types": ["chart", "slide"],
+    "notes": "Market size triggers chart+slide, leadership triggers infographic, deck always present."
+  },
+  {
+    "scenario_id": "scenario_002_market_only",
+    "description": "Single market size claim for a pricing workshop.",
+    "client_context": "Workshop for pricing strategy focused on ASEAN growth.",
+    "verified_claims": [
+      {
+        "claim_id": "claim_101",
+        "claim": "The Indonesian SaaS market will surpass USD 12 billion by 2026",
+        "verdict": "TRUE",
+        "confidence": 0.87,
+        "evidence": [
+          {
+            "source": "IDC",
+            "summary": "Forecast shows SaaS spending hitting USD 12B by 2026."
+          }
+        ]
+      }
+    ],
+    "expected_material_types": ["chart", "slide", "presentation_deck"],
+    "expected_high_priority_types": ["chart", "slide"],
+    "notes": "Market + billion should produce chart and slide recommendations plus deck."
+  },
+  {
+    "scenario_id": "scenario_003_share_only",
+    "description": "Market leadership proof point without explicit market size.",
+    "client_context": "Executive update for a logistics prospect.",
+    "verified_claims": [
+      {
+        "claim_id": "claim_201",
+        "claim": "LogiGo leads regional market share for next-day parcel delivery",
+        "verdict": "TRUE",
+        "confidence": 0.83,
+        "evidence": [
+          {
+            "source": "ASEAN Logistics Journal",
+            "summary": "LogiGo holds the highest share across key metros."
+          }
+        ]
+      }
+    ],
+    "expected_material_types": ["infographic", "presentation_deck"],
+    "expected_high_priority_types": [],
+    "notes": "Leadership keyword should add infographic; deck is default."
+  },
+  {
+    "scenario_id": "scenario_004_neutral_claims",
+    "description": "Claims that do not mention market size or share should fall back to deck-only.",
+    "client_context": "Customer success review for an existing client.",
+    "verified_claims": [
+      {
+        "claim_id": "claim_301",
+        "claim": "Our NPS improved by 12 points after onboarding the CX automation suite",
+        "verdict": "TRUE",
+        "confidence": 0.86,
+        "evidence": [
+          {
+            "source": "Internal CSAT Dashboard",
+            "summary": "NPS rose from 45 to 57 in six months."
+          }
+        ]
+      }
+    ],
+    "expected_material_types": ["presentation_deck"],
+    "expected_high_priority_types": [],
+    "notes": "No keywords -> heuristics should only produce the default deck."
+  },
+  {
+    "scenario_id": "scenario_005_mixed_signals",
+    "description": "Two claims where only one matches heuristic triggers.",
+    "client_context": "Quarterly business review with a manufacturing client.",
+    "verified_claims": [
+      {
+        "claim_id": "claim_401",
+        "claim": "Our industrial IoT platform captured 42% market share among Tier-1 plants",
+        "verdict": "TRUE",
+        "confidence": 0.9,
+        "evidence": [
+          {
+            "source": "Manufacturing Insight",
+            "summary": "IoT adoption data shows 42% share for the client."
+          }
+        ]
+      },
+      {
+        "claim_id": "claim_402",
+        "claim": "Deployments reduced unplanned downtime by 15% in the first quarter",
+        "verdict": "TRUE",
+        "confidence": 0.78,
+        "evidence": [
+          {
+            "source": "Operations Report",
+            "summary": "Downtime dropped to 2.3 hours monthly on average."
+          }
+        ]
+      }
+    ],
+    "expected_material_types": ["infographic", "presentation_deck"],
+    "expected_high_priority_types": ["infographic"],
+    "notes": "Only market share claim should trigger infographic; other claim is neutral."
+  }
+]

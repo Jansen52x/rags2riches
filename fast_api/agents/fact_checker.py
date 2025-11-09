@@ -22,7 +22,16 @@ from ddgs import DDGS
 import requests
 
 # Load variables from secrets.env
-load_dotenv("secrets.env")
+# Works in both Docker (file mounted at /app/secrets.env) and local dev
+# Note: In Docker, env_file in docker-compose already loads these, but this ensures consistency
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", "secrets.env"))
+
+# Debug: Check if critical env vars are loaded
+google_key = os.getenv("GOOGLE_API_KEY")
+if google_key:
+    print(f"✅ GOOGLE_API_KEY loaded: {google_key[:10]}...")
+else:
+    print("⚠️ WARNING: GOOGLE_API_KEY not found in environment!")
 
 # Ensure project root is importable so we can access materials-agent modules
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -215,6 +224,45 @@ async def process_search_result(state: FactCheckState) -> FactCheckState:
     except json.JSONDecodeError:
         # fallback in case the LLM outputs plain text instead of valid JSON
         claim_result = response.content
+
+    def _normalize_bool(value):
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            return normalized in {"true", "yes", "y", "1", "pass", "approve"}
+        if value is None:
+            return None
+        return bool(value)
+
+    def _is_positive_verdict(verdict: str) -> bool:
+        verdict_upper = (verdict or "").upper()
+        return verdict_upper in {
+            "TRUE",
+            "SUPPORTED",
+            "ACCURATE",
+            "VERIFIED",
+            "YES",
+            "PASS",
+        }
+
+    if isinstance(claim_result, dict):
+        verdict_flag = _normalize_bool(claim_result.get("pass_to_materials_agent"))
+        overall_verdict = claim_result.get("overall_verdict")
+
+        if verdict_flag is None:
+            verdict_flag = _is_positive_verdict(overall_verdict)
+
+        if _is_positive_verdict(overall_verdict):
+            verdict_flag = True
+
+        claim_result["pass_to_materials_agent"] = bool(verdict_flag)
+
+        # Ensure optional fields have sensible defaults
+        claim_result.setdefault("main_evidence", [])
+        claim_result.setdefault("explanation", "")
+        if "confidence" not in claim_result:
+            claim_result["confidence"] = 0.85 if claim_result["pass_to_materials_agent"] else 0.5
 
     print("Processed search result for claim.")
     
@@ -447,11 +495,13 @@ def _blocking_query_rag_system(refined_query: str) -> str:
     """Internal blocking function for RAG query."""
     print(f"Querying RAG system (blocking thread) with: {refined_query}")
     response = requests.post(
-        "http://localhost:8000/query-rag",
+        "http://localhost:8001/query-rag",
         json={"query": refined_query, "k": 5, "include_sources": False}
     )
-    if response.answer:
-        return response.answer
+    
+    data = response.json()
+    if 'answer' in data:
+        return data['answer']
     
     return "No additional info available from source documents."
 
@@ -471,7 +521,12 @@ async def query_rag_system(refined_query: str) -> str:
 # endregion
 
 llm = ChatOllama(model="llama3.2:3b", temperature=0)
-bigLM = ChatGoogleGenerativeAI(model="gemini-2.5-pro", temperature=0)
+bigLM = ChatGoogleGenerativeAI(
+    model="gemini-2.5-pro",
+    temperature=0,
+    google_api_key=os.getenv("GOOGLE_API_KEY")
+)
+
 tools = [duckduckgo_search_text, tavily_search, search_wikipedia, get_news_articles, query_rag_system] # Agent needs the search tools, the scraper and the RAG query tool
 agent = create_agent(bigLM, tools)
 

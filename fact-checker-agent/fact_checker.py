@@ -17,14 +17,10 @@ import os
 import sys
 from ddgs import DDGS
 import psycopg
+import uuid
 
 # Load variables from secrets.env
-load_dotenv("secrets.env")
-
-# Ensure project root is importable so we can access materials-agent modules
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if PROJECT_ROOT not in sys.path:
-    sys.path.append(PROJECT_ROOT)
+load_dotenv("../secrets.env")
 
 # region LangGraph State
 class FactCheckState(TypedDict):
@@ -37,8 +33,6 @@ class FactCheckState(TypedDict):
     analyzed_claim: Dict
     claim_verdict: Dict
     evidence_log: List[Dict]
-    # optional handoff status
-    materials_status: Optional[str]
 
 # endregion
 
@@ -221,54 +215,54 @@ def process_search_result(state: FactCheckState) -> Command:
     
     return {"claim_verdict": claim_result}
 
-def save_to_db(state: FactCheckState) -> Command:
-    """
-    Save the verdict to the database
-    Verdict_data should contain:
-        - salesperson_id: str
-        - claim_id: str
-        - overall_verdict: bool
-        - explanation: str
-        - main_evidence: list of dicts with 'source' and 'summary'
-        - pass_to_materials_agent: bool
+# def save_to_db(state: FactCheckState) -> Command:
+#     """
+#     Save the verdict to the database
+#     Verdict_data should contain:
+#         - salesperson_id: str
+#         - claim_id: str
+#         - overall_verdict: bool
+#         - explanation: str
+#         - main_evidence: list of dicts with 'source' and 'summary'
+#         - pass_to_materials_agent: bool
 
-    """
+#     """
 
-    print("Saving verdict to database...")
-    verdict = state.get("claim_verdict")
-    salesperson_id = state.get("salesperson_id")
-    claim_id = state.get("claim_id")
+#     print("Saving verdict to database...")
+#     verdict = state.get("claim_verdict")
+#     salesperson_id = state.get("salesperson_id")
+#     claim_id = state.get("claim_id")
 
-    # Connect to an existing database
-    with psycopg.connect("dbname=claim_verifications user=fact-checker password=fact-checker host=localhost port=5432") as conn:
+#     # Connect to an existing database
+#     with psycopg.connect("dbname=claim_verifications user=fact-checker password=fact-checker host=localhost port=5432") as conn:
 
-        # Inserting data
-        try: 
-            original_claim = verdict.get('claim', 'Unknown Claim')
-            verdict_str = str(verdict.get('overall_verdict', '')).upper()
-            overall_bool = True if verdict_str == 'TRUE' else False
-            evidence_json = json.dumps(verdict.get('main_evidence', []))
-            pass_to_materials = verdict.get('pass_to_materials_agent', False)
+#         # Inserting data
+#         try: 
+#             original_claim = verdict.get('claim', 'Unknown Claim')
+#             verdict_str = str(verdict.get('overall_verdict', '')).upper()
+#             overall_bool = True if verdict_str == 'TRUE' else False
+#             evidence_json = json.dumps(verdict.get('main_evidence', []))
+#             pass_to_materials = verdict.get('pass_to_materials_agent', False)
             
-            conn.execute(
-                "INSERT INTO claim_verifications (original_claim, original_claim_id, salesperson_id, overall_verdict, explanation, main_evidence, pass_to_materials_agent) VALUES (%s, %s, %s, %s, %s, %s, %s)",
-                (
-                    original_claim,
-                    salesperson_id,
-                    claim_id,
-                    overall_bool,
-                    verdict.get('explanation'),
-                    evidence_json,
-                    pass_to_materials
-                )
-            )
-            print(f"Verdict saved to database (pass_to_materials_agent: {pass_to_materials})")
+#             conn.execute(
+#                 "INSERT INTO claim_verifications (original_claim, original_claim_id, salesperson_id, overall_verdict, explanation, main_evidence, pass_to_materials_agent) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+#                 (
+#                     original_claim,
+#                     salesperson_id,
+#                     claim_id,
+#                     overall_bool,
+#                     verdict.get('explanation'),
+#                     evidence_json,
+#                     pass_to_materials
+#                 )
+#             )
+#             print(f"Verdict saved to database (pass_to_materials_agent: {pass_to_materials})")
 
-        except Exception as e:
-            print(f"Error saving verdict to database: {e}")
-            return Command(update=state, goto=END)
+#         except Exception as e:
+#             print(f"Error saving verdict to database: {e}")
+#             return Command(update=state, goto=END)
             
-    return Command(update=state, goto=END)
+#     return Command(update=state, goto=END)
 
 
 #endregion
@@ -375,5 +369,18 @@ def query_rag_system(refined_query: str) -> str: # Not yet implemented
 # Creating search agent
 llm = ChatOllama(model="llama3.2:3b", temperature=0)
 bigLM = ChatGoogleGenerativeAI(model="gemini-2.5-pro", temperature=0)
-tools = [duckduckgo_search_text, tavily_search, search_wikipedia, get_news_articles, query_rag_system] # Agent needs the search tools, the scraper and the RAG query tool
+# tools = [duckduckgo_search_text, tavily_search, search_wikipedia, get_news_articles, query_rag_system] # Agent needs the search tools, the scraper and the RAG query tool
+tools = [query_rag_system] # Agent needs the search tools, the scraper and the RAG query tool
 agent = create_agent(bigLM, tools)
+
+graph = StateGraph(FactCheckState)
+graph.add_node("analyze", analyze_node)
+graph.add_node("search", search_claim)
+graph.add_node("process", process_search_result)
+
+graph.add_edge(START, "analyze")
+graph.add_edge("analyze", "search")
+graph.add_edge("search", "process")
+graph.add_edge("process", END)
+
+app = graph.compile()

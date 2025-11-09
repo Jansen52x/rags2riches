@@ -129,10 +129,35 @@ if 'rag_results' in st.session_state:
         st.markdown("")  # Spacing
         st.subheader("📝 Answer")
         st.markdown(f"""
-        <div style="background-color: #000000; padding: 2rem; border-radius: 10px; border-left: 5px solid #1f77b4; margin: 1rem 0;">
+        <div style="padding: 2rem; border-radius: 10px; border: 2px solid #000000;  margin: 1rem 0;">
             {results['answer']}
         </div>
         """, unsafe_allow_html=True)
+        st.markdown("")  # Spacing
+
+        # Only show fact-check option if user wants to extract claims
+        with st.expander("⚙️ Verify Claims"):
+
+            # Let user manually select/edit what to fact-check
+            claim_input = st.text_input(
+                "Enter your claim to verify",
+                value="",
+                placeholder="e.g., 'Williams-Frederick generated $50M revenue in 2023' or select a specific factual statement from the answer above",
+                help="Extract a specific factual claim from the RAG answer that you want to verify with external sources"
+            )
+
+            col_btn1, col_btn2 = st.columns([1, 1])
+            with col_btn1:
+                if st.button("🔍 Fact-Check This Claim", type="primary", use_container_width=True, disabled=not claim_input.strip()):
+                    st.session_state.claim = claim_input.strip()
+                    st.session_state.rag_context = f"Original Query: {query_text}\n\nRAG Answer Context: {results['answer'][:200]}..."
+                    st.switch_page("pages/2_Fact_Checker.py")
+            with col_btn2:
+                if st.button("📋 Use Full Answer", use_container_width=True):
+                    st.session_state.claim = results['answer']
+                    st.session_state.rag_context = query_text
+                    st.switch_page("pages/2_Fact_Checker.py")
+
         st.markdown("")  # Spacing
 
     # Display sources
@@ -181,15 +206,40 @@ if 'rag_results' in st.session_state:
                 )
 
                 st.markdown("")  # Spacing
-                
+
                 # Action buttons
                 col_action1, col_action2 = st.columns(2)
                 with col_action1:
                     if st.button(f"📋 Copy to Materials", key=f"copy_{i}"):
                         st.info(f"Added source {i} to materials context")
                 with col_action2:
-                    if st.button(f"🔗 View Full Document", key=f"view_{i}"):
-                        st.info(f"Document ID: {source.get('id', 'N/A')}")
+                    # Option to extract claim from this source
+                    if st.button(f"🔍 Extract Claim", key=f"extract_{i}"):
+                        st.session_state[f'extract_from_source_{i}'] = True
+                        st.rerun()
+
+                # Show claim extraction UI if user clicked extract
+                if st.session_state.get(f'extract_from_source_{i}', False):
+                    st.markdown("---")
+                    st.markdown("**Extract a verifiable claim from this source:**")
+                    extracted_claim = st.text_area(
+                        "Claim to verify",
+                        value="",
+                        placeholder="e.g., 'Company X achieved 25% growth in Q4 2023'",
+                        key=f"claim_extract_{i}",
+                        height=80
+                    )
+                    col_e1, col_e2 = st.columns(2)
+                    with col_e1:
+                        if st.button("✅ Verify This", key=f"verify_{i}"):
+                            if extracted_claim.strip():
+                                st.session_state.claim = extracted_claim.strip()
+                                st.session_state.rag_context = f"Query: {query_text}\nSource: {metadata.get('company_name', 'Unknown')}\nDocument Score: {score:.3f}"
+                                st.switch_page("pages/2_Fact_Checker.py")
+                    with col_e2:
+                        if st.button("❌ Cancel", key=f"cancel_{i}"):
+                            st.session_state[f'extract_from_source_{i}'] = False
+                            st.rerun()
             
             st.markdown("")  # Spacing between expanders
 

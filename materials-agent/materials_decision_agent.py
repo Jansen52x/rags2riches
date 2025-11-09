@@ -58,6 +58,8 @@ class MaterialsDecisionState(TypedDict):
     material_recommendations: List[Dict]
     selected_materials: List[Dict]
     generation_queue: List[Dict]
+    generated_files: List[str]
+    generation_status: Optional[str]
     
     # Status tracking
     decision_complete: bool
@@ -629,6 +631,8 @@ if __name__ == "__main__":
         material_recommendations=[],
         selected_materials=[],
         generation_queue=[],
+        generated_files=[],
+        generation_status=None,
         decision_complete=False,
         user_feedback=None
     )

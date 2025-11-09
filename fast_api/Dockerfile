@@ -29,4 +29,5 @@ RUN mkdir -p /app/generated_content/ai_images
 # It tells uvicorn to run the 'app' object from the 'app.main' file
 # --host 0.0.0.0 is MANDATORY. It tells it to listen to requests
 # from *outside* the container (i.e., from the Streamlit app).
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001"]
+# --reload enables hot-reloading when code changes (development mode)
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001", "--reload"]
