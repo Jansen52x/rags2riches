@@ -1,7 +1,7 @@
 from openai import OpenAI
 import logging
 from config import settings
-from typing import Dict, Tuple, Optional
+from typing import Dict, Tuple, Optional, Union
 import json
 import csv
 from datetime import datetime
@@ -40,8 +40,9 @@ class LLMService:
         context: str,
         max_tokens: int = None,
         temperature: float = None,
-        evaluate: bool = True  # Added parameter to control evaluation
-    ) -> str:
+        evaluate: bool = True,
+        return_evaluation: bool = False
+    ) -> Union[str, Tuple[str, Dict[str, any]]]:
         """
         Generate an answer using the LLM based on query and context
         Automatically evaluates the response by default
@@ -52,9 +53,11 @@ class LLMService:
             max_tokens: Maximum tokens to generate (default from config)
             temperature: Sampling temperature (default from config)
             evaluate: Whether to run automatic evaluation (default: True)
+            return_evaluation: Whether to return evaluation results (default: False)
 
         Returns:
-            Generated answer as string
+            If return_evaluation is False: Generated answer as string
+            If return_evaluation is True: Tuple of (answer, evaluation_results)
         """
         max_tokens = max_tokens or settings.MAX_TOKENS
         temperature = temperature or settings.TEMPERATURE
@@ -93,13 +96,19 @@ Answer:"""
             logger.info(f"Generated answer for query: {query[:50]}...")
             
             # Automatically evaluate if requested
+            evaluation = None
             if evaluate:
                 try:
-                    self.evaluate_rag_response(query, context, answer, save_to_csv=True)
+                    evaluation = self.evaluate_rag_response(query, context, answer, save_to_csv=True)
                 except Exception as e:
                     logger.error(f"Evaluation failed but continuing: {e}")
             
-            return answer
+            # Return based on return_evaluation flag
+            if return_evaluation:
+                return answer, evaluation
+            else:
+                return answer
+                
         except Exception as e:
             logger.error(f"Error generating answer: {e}")
             raise
@@ -303,73 +312,6 @@ Respond ONLY with valid JSON in this exact format:
             if save_to_csv:
                 self._save_evaluation_to_csv(query, context, answer, evaluation)
             return evaluation
-
-    def generate_with_evaluation(
-        self,
-        query: str,
-        context: str,
-        max_tokens: int = None,
-        temperature: float = None,
-        evaluate: bool = True
-    ) -> Tuple[str, Dict[str, any]]:
-        """
-        Generate an answer and optionally evaluate it
-        Returns both answer and evaluation results
-
-        Args:
-            query: User's question
-            context: Retrieved context from RAG
-            max_tokens: Maximum tokens to generate
-            temperature: Sampling temperature
-            evaluate: Whether to run evaluation
-
-        Returns:
-            Tuple of (answer, evaluation_results)
-        """
-        max_tokens = max_tokens or settings.MAX_TOKENS
-        temperature = temperature or settings.TEMPERATURE
-
-        system_prompt = """You are an expert sales briefing assistant. You are helping a salesperson prepare for a client meeting.
-Use the following pieces of retrieved context to answer the question.
-
-Your goal is to be factual, concise, and directly useful.
-- Extract key facts, strategies, names, and numbers.
-- Structure your answer clearly. Use bullet points if helpful.
-- If the information is not in the context, state that clearly. DO NOT make up information.
-
-Question: {question}
-
-Context: {context}
-
-Answer:"""
-
-        user_prompt = f"""Context: {context}
-
-Question: {query}
-
-Answer:"""
-
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                max_tokens=max_tokens,
-                temperature=temperature
-            )
-            answer = response.choices[0].message.content
-            logger.info(f"Generated answer for query: {query[:50]}...")
-            
-            evaluation = None
-            if evaluate:
-                evaluation = self.evaluate_rag_response(query, context, answer)
-            
-            return answer, evaluation
-        except Exception as e:
-            logger.error(f"Error generating answer: {e}")
-            raise
 
     def health_check(self) -> bool:
         """
