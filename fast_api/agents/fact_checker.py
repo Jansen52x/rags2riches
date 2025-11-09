@@ -456,11 +456,13 @@ def _blocking_query_rag_system(refined_query: str) -> str:
     """Internal blocking function for RAG query."""
     print(f"Querying RAG system (blocking thread) with: {refined_query}")
     response = requests.post(
-        "http://localhost:8000/query-rag",
+        "http://localhost:8001/query-rag",
         json={"query": refined_query, "k": 5, "include_sources": False}
     )
-    if response.answer:
-        return response.answer
+    
+    data = response.json()
+    if 'answer' in data:
+        return data['answer']
     
     return "No additional info available from source documents."
 
@@ -485,6 +487,7 @@ bigLM = ChatGoogleGenerativeAI(
     temperature=0,
     google_api_key=os.getenv("GOOGLE_API_KEY")
 )
+
 tools = [duckduckgo_search_text, tavily_search, search_wikipedia, get_news_articles, query_rag_system] # Agent needs the search tools, the scraper and the RAG query tool
 agent = create_agent(bigLM, tools)
 
