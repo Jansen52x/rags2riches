@@ -23,3 +23,8 @@ replicate
 requests
 numpy
 langchain-anthropic
+# RAG Dependencies
+chromadb
+sentence-transformers
+openai
+pydantic-settings

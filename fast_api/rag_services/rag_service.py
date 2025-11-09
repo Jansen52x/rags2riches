@@ -2,9 +2,9 @@ import chromadb
 from typing import List, Dict, Any
 import logging
 from sentence_transformers import CrossEncoder
-from fast_api.config import settings
-from embedding_service import EmbeddingService
-from llm_service import LLMService
+from config import settings
+from .embedding_service import EmbeddingService
+from .llm_service import LLMService
 
 logger = logging.getLogger(__name__)
 

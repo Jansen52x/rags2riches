@@ -22,7 +22,16 @@ from ddgs import DDGS
 import requests
 
 # Load variables from secrets.env
-load_dotenv("secrets.env")
+# Works in both Docker (file mounted at /app/secrets.env) and local dev
+# Note: In Docker, env_file in docker-compose already loads these, but this ensures consistency
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", "secrets.env"))
+
+# Debug: Check if critical env vars are loaded
+google_key = os.getenv("GOOGLE_API_KEY")
+if google_key:
+    print(f"✅ GOOGLE_API_KEY loaded: {google_key[:10]}...")
+else:
+    print("⚠️ WARNING: GOOGLE_API_KEY not found in environment!")
 
 # Ensure project root is importable so we can access materials-agent modules
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -471,7 +480,11 @@ async def query_rag_system(refined_query: str) -> str:
 # endregion
 
 llm = ChatOllama(model="llama3.2:3b", temperature=0)
-bigLM = ChatGoogleGenerativeAI(model="gemini-2.5-pro", temperature=0)
+bigLM = ChatGoogleGenerativeAI(
+    model="gemini-2.5-pro",
+    temperature=0,
+    google_api_key=os.getenv("GOOGLE_API_KEY")
+)
 tools = [duckduckgo_search_text, tavily_search, search_wikipedia, get_news_articles, query_rag_system] # Agent needs the search tools, the scraper and the RAG query tool
 agent = create_agent(bigLM, tools)
 

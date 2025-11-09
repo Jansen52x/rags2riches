@@ -9,4 +9,5 @@ replicate
 requests
 python-dotenv
 numpy
+pandas
 openai

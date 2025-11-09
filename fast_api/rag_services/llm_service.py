@@ -1,6 +1,6 @@
 from openai import OpenAI
 import logging
-from fast_api.config import settings
+from config import settings
 
 logger = logging.getLogger(__name__)
 
