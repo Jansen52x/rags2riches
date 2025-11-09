@@ -176,7 +176,7 @@ if st.session_state.workflow_complete:
     ):
         # --- Pass to materials agent ---
         with st.spinner("Passing selected claims to Materials Agent..."):
-            st.switch_page("pages/3_Materials_Agent.py")
+            st.switch_page("pages/3_Marketing_Decision.py")
 
 # Footer
 st.markdown("---")

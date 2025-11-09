@@ -76,6 +76,33 @@ if 'selected_materials' not in st.session_state:
     st.session_state.selected_materials = []
 if 'workflow_complete' not in st.session_state:
     st.session_state.workflow_complete = False
+if 'verified_claims' not in st.session_state:
+    st.session_state.verified_claims = []
+
+# Check if claim from Fact Checker exists and add it to verified_claims
+if ('claim' in st.session_state and 
+    'claim_verdict' in st.session_state and 
+    st.session_state.claim and
+    st.session_state.claim_verdict):
+    
+    # Transform to verified_claims format
+    fact_checker_claim = {
+        "claim_text": st.session_state.claim,
+        "verdict": st.session_state.claim_verdict.get('overall_verdict', 'UNKNOWN'),
+        "confidence": 0.85,  # Default confidence
+        "evidence": st.session_state.claim_verdict.get('main_evidence', []),
+        "explanation": st.session_state.claim_verdict.get('explanation', ''),
+        "pass_to_materials_agent": st.session_state.claim_verdict.get('pass_to_materials_agent', False)
+    }
+    
+    # Add to verified_claims if not already present (avoid duplicates)
+    claim_texts = [c.get('claim_text', '') for c in st.session_state.verified_claims]
+    if fact_checker_claim['claim_text'] not in claim_texts:
+        st.session_state.verified_claims.append(fact_checker_claim)
+        
+        # Clear the fact checker session state to prevent re-adding
+        st.session_state.claim = ""
+        st.session_state.claim_verdict = None
 
 # Header
 st.markdown(f"""
@@ -114,6 +141,17 @@ with st.sidebar:
     )
     
     st.header("Verified Claims Input")
+    
+    # Show claims from Fact Checker if they exist
+    fact_checker_claims = [c for c in st.session_state.verified_claims if c.get('verdict')]
+    if fact_checker_claims:
+        st.success(f"✓ {len(fact_checker_claims)} claim(s) received from Fact Checker")
+        for claim in fact_checker_claims:
+            with st.expander(f"🔍 {claim['claim_text'][:50]}..."):
+                st.write(f"**Verdict:** {claim.get('verdict', 'UNKNOWN')}")
+                st.write(f"**Confidence:** {claim.get('confidence', 0):.0%}")
+                if claim.get('explanation'):
+                    st.write(f"**Explanation:** {claim['explanation']}")
     
     # Sample verified claims for testing
     sample_claims = [
