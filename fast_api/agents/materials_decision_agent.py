@@ -11,10 +11,17 @@ import psycopg
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+from PIL import Image, ImageDraw, ImageFont
+import textwrap
 import traceback
 
 # Use proper package import - no sys.path hacking needed!
 from .content_generation.content_generation_agent import create_content_generation_agent
+
+# Paths for generated assets served via FastAPI static mount
+GENERATED_CONTENT_DIR = Path(__file__).resolve().parent.parent / "generated_content"
+FALLBACK_IMAGE_DIR = GENERATED_CONTENT_DIR / "images"
+FALLBACK_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # State definitions
@@ -54,6 +61,8 @@ class MaterialsDecisionState(TypedDict):
     material_recommendations: List[Dict]
     selected_materials: List[Dict]
     generation_queue: List[Dict]
+    generated_files: List[str]
+    generation_status: Optional[str]
     
     # Status tracking
     decision_complete: bool
@@ -551,6 +560,57 @@ def get_client_preferences(client_id: str) -> str:
         "visual_preference": "data_heavy"
     })
 
+
+def _render_text_image(path: Path, title: str, description: str, priority: str) -> None:
+    """Create a simple branded placeholder image for a material recommendation."""
+    width, height = 1280, 720
+    palette = {
+        "high": (199, 56, 56),
+        "medium": (240, 143, 35),
+        "low": (40, 160, 92)
+    }
+    colour = palette.get(priority.lower(), (32, 74, 135))
+
+    image = Image.new("RGB", (width, height), colour)
+    draw = ImageDraw.Draw(image)
+
+    try:
+        title_font = ImageFont.truetype("Arial.ttf", 80)
+        body_font = ImageFont.truetype("Arial.ttf", 44)
+    except Exception:
+        title_font = ImageFont.load_default()
+        body_font = ImageFont.load_default()
+
+    wrapped_title = textwrap.fill(title, width=25)
+    draw.multiline_text((70, 90), wrapped_title, fill="white", font=title_font, spacing=12)
+
+    wrapped_desc = textwrap.fill(description, width=32)
+    draw.multiline_text((70, 260), wrapped_desc, fill="white", font=body_font, spacing=8)
+
+    footer = f"PRIORITY: {priority.upper()}"
+    draw.text((70, height - 140), footer, fill="white", font=body_font)
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    image.save(path, format="PNG")
+
+
+def _fallback_generate_assets(queue: List[Dict]) -> List[str]:
+    """Generate simple visual placeholders when no assets are produced."""
+    generated: List[str] = []
+    for item in queue:
+        material_id = item.get("material_id", str(uuid.uuid4()))
+        material_type = item.get("type", "material")
+        filename = f"{material_id}_{material_type}.png"
+        output_path = FALLBACK_IMAGE_DIR / filename
+        _render_text_image(
+            output_path,
+            title=item.get("title", "Marketing Asset"),
+            description=item.get("description", ""),
+            priority=item.get("priority", "medium")
+        )
+        generated.append(f"/generated_content/images/{filename}")
+    return generated
+
 def trigger_generation_node(state: MaterialsDecisionState) -> Command:
     """Trigger content generation for approved materials"""
     
@@ -559,14 +619,29 @@ def trigger_generation_node(state: MaterialsDecisionState) -> Command:
     if not generation_queue:
         return Command(update={"status": "no_materials_to_generate"})
     
-    # Trigger content generation
-    # @tool returns a StructuredTool which must be invoked explicitly
-    result = trigger_content_generation.invoke(json.dumps(generation_queue))
-    result_data = json.loads(result)
-    
+    generated_files: List[str] = []
+    generation_status = "skipped"
+
+    try:
+        # @tool returns a StructuredTool which must be invoked explicitly
+        result = trigger_content_generation.invoke(json.dumps(generation_queue))
+        result_data = json.loads(result)
+        generation_status = result_data.get("status", "completed")
+        generated_files = result_data.get("generated_files", [])
+    except Exception as exc:
+        generation_status = f"error: {exc}"
+        print(f"⚠️ Generation agent failed, falling back to placeholders: {exc}")
+
+    if not generated_files:
+        fallback_files = _fallback_generate_assets(generation_queue)
+        if fallback_files:
+            generated_files = fallback_files
+            generation_status = f"fallback_generated ({generation_status})"
+    print(f"   → Final generated file list: {generated_files}")
+
     return Command(update={
-        "generation_status": result_data.get("status"),
-        "generated_files": result_data.get("generated_files", [])
+        "generation_status": generation_status,
+        "generated_files": generated_files
     })
 
 # Setup function for testing
@@ -626,6 +701,8 @@ if __name__ == "__main__":
         material_recommendations=[],
         selected_materials=[],
         generation_queue=[],
+        generated_files=[],
+        generation_status=None,
         decision_complete=False,
         user_feedback=None
     )
