@@ -593,16 +593,29 @@ def generate_all_documents_for_company(client_data, num_docs_range=(5, 10), use_
         documents.append(generate_press_release(client_data, use_gemini=use_gemini))
         
         # Add additional random documents
-        available_generators = [
-            lambda cd: generate_product_brochure(cd, use_gemini=use_gemini),
-            lambda cd: generate_services_brochure(cd, use_gemini=use_gemini),
-            lambda cd: generate_financial_report(cd, use_gemini=use_gemini),
-            lambda cd: generate_press_release(cd, use_gemini=use_gemini),
-            lambda cd: generate_advertisement(cd, use_gemini=use_gemini),
-            lambda cd: generate_case_study(cd, use_gemini=use_gemini),
-            lambda cd: generate_internal_memo(cd, use_gemini=use_gemini),
-            lambda cd: generate_shareholder_report(cd, use_gemini=use_gemini)
-        ]
+        # For real companies: exclude internal memos (private/confidential)
+        if is_seed_company:
+            available_generators = [
+                lambda cd: generate_product_brochure(cd, use_gemini=use_gemini),
+                lambda cd: generate_services_brochure(cd, use_gemini=use_gemini),
+                lambda cd: generate_financial_report(cd, use_gemini=use_gemini),
+                lambda cd: generate_press_release(cd, use_gemini=use_gemini),
+                lambda cd: generate_advertisement(cd, use_gemini=use_gemini),
+                lambda cd: generate_case_study(cd, use_gemini=use_gemini),
+                lambda cd: generate_shareholder_report(cd, use_gemini=use_gemini)
+            ]
+        else:
+            # For synthetic companies: include all document types
+            available_generators = [
+                lambda cd: generate_product_brochure(cd, use_gemini=use_gemini),
+                lambda cd: generate_services_brochure(cd, use_gemini=use_gemini),
+                lambda cd: generate_financial_report(cd, use_gemini=use_gemini),
+                lambda cd: generate_press_release(cd, use_gemini=use_gemini),
+                lambda cd: generate_advertisement(cd, use_gemini=use_gemini),
+                lambda cd: generate_case_study(cd, use_gemini=use_gemini),
+                lambda cd: generate_internal_memo(cd, use_gemini=use_gemini),
+                lambda cd: generate_shareholder_report(cd, use_gemini=use_gemini)
+            ]
         
         for _ in range(num_docs - 4):
             generator = random.choice(available_generators)
