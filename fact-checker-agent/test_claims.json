@@ -3,7 +3,7 @@
     {
       "id": 1,
       "claim": "Salesforce reported a 11% year-over-year revenue growth in their Q3 2024 earnings.",
-      "expected_verdict": "CANNOT BE DETERMINED"
+      "expected_verdict": "TRUE"
     },
     {
       "id": 2,

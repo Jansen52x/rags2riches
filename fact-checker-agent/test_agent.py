@@ -14,9 +14,16 @@ Environment variable needed:
 
 import json
 import os
-from typing import Dict, List, Tuple
-from dataclasses import dataclass
+import sqlite3
+from typing import Dict, List, Tuple, Optional as TypingOptional
+from dataclasses import dataclass, asdict
 import google.generativeai as genai
+from dotenv import load_dotenv
+from typing_extensions import TypedDict, Optional
+from fact_checker import app
+import uuid
+
+load_dotenv("../secrets.env")
 
 
 @dataclass
@@ -25,6 +32,19 @@ class FactCheckResult:
     claim: str
     verdict: str  # TRUE/FALSE/CANNOT BE DETERMINED
     explanation: str
+
+@dataclass
+class FactCheckState(TypedDict):
+    claim_id: str
+    original_claim: str
+    salesperson_id: str
+    client_context: Optional[str]
+
+    # progressively added fields:
+    analyzed_claim: Dict
+    claim_verdict: Dict
+    evidence_log: List[Dict]
+
 
 
 @dataclass
@@ -42,19 +62,73 @@ class EvaluationResult:
 class FactCheckerEvaluator:
     """Evaluates fact checker agent performance"""
     
-    def __init__(self, gemini_api_key: str = None):
+    def __init__(self, gemini_api_key: str = None, db_path: str = 'evaluation_results.db'):
         """
         Initialize evaluator with Gemini API
         
         Args:
             gemini_api_key: Google AI API key (or set GEMINI_API_KEY env var)
         """
-        api_key = gemini_api_key or os.getenv('GEMINI_API_KEY')
+        api_key = gemini_api_key or os.getenv('GOOGLE_API_KEY')
         if not api_key:
             raise ValueError("Gemini API key required. Set GEMINI_API_KEY env variable or pass as parameter.")
         
         genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel('gemini-1.5-flash')
+        self.model = genai.GenerativeModel('gemini-2.5-flash')
+        self.db_path = db_path
+        self._init_db()
+
+    def _init_db(self):
+        """Initialize the SQLite database and create the results table."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS evaluation_results (
+                    claim_id TEXT PRIMARY KEY,
+                    claim TEXT,
+                    expected_verdict TEXT,
+                    actual_verdict TEXT,
+                    exact_match BOOLEAN,
+                    llm_judge_score REAL,
+                    llm_judge_reasoning TEXT
+                )
+            ''')
+            conn.commit()
+
+    def _get_result_from_db(self, claim_id: str) -> Optional[EvaluationResult]:
+        """Retrieve a single evaluation result from the database."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM evaluation_results WHERE claim_id = ?", (claim_id,))
+            row = cursor.fetchone()
+            if row:
+                return EvaluationResult(
+                    claim_id=row['claim_id'],
+                    claim=row['claim'],
+                    expected_verdict=row['expected_verdict'],
+                    actual_verdict=row['actual_verdict'],
+                    exact_match=bool(row['exact_match']),
+                    llm_judge_score=row['llm_judge_score'],
+                    llm_judge_reasoning=row['llm_judge_reasoning']
+                )
+        return None
+
+    def _save_result_to_db(self, result: EvaluationResult):
+        """Save a single evaluation result to the database."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT OR REPLACE INTO evaluation_results (
+                    claim_id, claim, expected_verdict, actual_verdict,
+                    exact_match, llm_judge_score, llm_judge_reasoning
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                result.claim_id, result.claim, result.expected_verdict,
+                result.actual_verdict, result.exact_match,
+                result.llm_judge_score, result.llm_judge_reasoning
+            ))
+            conn.commit()
     
     def load_test_data(self, filepath: str) -> List[Dict]:
         """Load test claims from JSON file"""
@@ -92,28 +166,28 @@ class FactCheckerEvaluator:
         
         prompt = f"""You are evaluating a fact-checking agent's performance. 
 
-CLAIM: {claim}
+        CLAIM: {claim}
 
-EXPECTED VERDICT: {expected_verdict}
+        EXPECTED VERDICT: {expected_verdict}
 
-ACTUAL VERDICT: {actual_verdict}
-ACTUAL EXPLANATION: {actual_explanation}
+        ACTUAL VERDICT: {actual_verdict}
+        ACTUAL EXPLANATION: {actual_explanation}
 
-Evaluate the fact checker's response on a scale of 0-100 based on:
-1. Verdict correctness (50 points): Is the verdict correct?
-2. Reasoning quality (40 points): Is the explanation logical, accurate, and well-supported?
-3. Clarity (10 points): Is the explanation clear and easy to understand?
+        Evaluate the fact checker's response on a scale of 0-100 based on:
+        1. Verdict correctness (50 points): Is the verdict correct?
+        2. Reasoning quality (40 points): Is the explanation logical, accurate, and well-supported?
+        3. Clarity (10 points): Is the explanation clear and easy to understand?
 
-Scoring guidelines:
-- If the verdict is completely wrong: Maximum 40 points total (can still get points for reasoning quality)
-- If the verdict is correct but explanation is poor or wrong: 50-65 points
-- If the verdict is correct with decent explanation: 65-85 points
-- If the verdict is correct with excellent explanation: 85-100 points
+        Scoring guidelines:
+        - If the verdict is completely wrong: Maximum 40 points total (can still get points for reasoning quality)
+        - If the verdict is correct but explanation is poor or wrong: 50-65 points
+        - If the verdict is correct with decent explanation: 65-85 points
+        - If the verdict is correct with excellent explanation: 85-100 points
 
-Provide your response in exactly this format:
-SCORE: [number between 0-100]
-REASONING: [Your detailed reasoning for the score]
-"""
+        Provide your response in exactly this format:
+        SCORE: [number between 0-100]
+        REASONING: [Your detailed reasoning for the score]
+        """
         
         try:
             response = self.model.generate_content(prompt)
@@ -178,47 +252,79 @@ REASONING: [Your detailed reasoning for the score]
             claim_id = claim_data['id']
             claim = claim_data['claim']
             expected_verdict = claim_data['expected_verdict']
+
+            # Check if result already exists in DB
+            existing_result = self._get_result_from_db(claim_id)
+            if existing_result:
+                print(f"Skipping [Claim {claim_id}] - result found in database.")
+                results.append(existing_result)
+                if existing_result.exact_match:
+                    exact_matches += 1
+                total_llm_score += existing_result.llm_judge_score
+                continue
             
             print(f"Testing [Claim {claim_id}]")
             print(f"Claim: {claim}")
             
             # Run fact checker
-            result = fact_checker_func(claim)
-            
-            # Exact match evaluation
-            exact_match = self.exact_match_evaluation(expected_verdict, result.verdict)
-            if exact_match:
-                exact_matches += 1
-            
-            # LLM judge evaluation
-            llm_score, llm_reasoning = self.llm_judge_evaluation(
-                claim, expected_verdict,
-                result.verdict, result.explanation
-            )
-            total_llm_score += llm_score
-            
-            # Store result
-            eval_result = EvaluationResult(
-                claim_id=claim_id,
-                claim=claim,
-                expected_verdict=expected_verdict,
-                actual_verdict=result.verdict,
-                exact_match=exact_match,
-                llm_judge_score=llm_score,
-                llm_judge_reasoning=llm_reasoning
-            )
-            results.append(eval_result)
-            
-            # Print immediate feedback
-            match_symbol = "✓" if exact_match else "✗"
-            print(f"  Expected: {expected_verdict} | Actual: {result.verdict} [{match_symbol}]")
-            print(f"  LLM Judge Score: {llm_score:.1f}/100")
-            print(f"  Agent Explanation: {result.explanation[:100]}...")
-            print()
+            try:
+                result = fact_checker_func(claim)
+                
+                # Exact match evaluation
+                exact_match = self.exact_match_evaluation(expected_verdict, result.verdict)
+                if exact_match:
+                    exact_matches += 1
+                
+                # LLM judge evaluation
+                llm_score, llm_reasoning = self.llm_judge_evaluation(
+                    claim, expected_verdict,
+                    result.verdict, result.explanation
+                )
+                total_llm_score += llm_score
+                
+                # Store result
+                eval_result = EvaluationResult(
+                    claim_id=claim_id,
+                    claim=claim,
+                    expected_verdict=expected_verdict,
+                    actual_verdict=result.verdict,
+                    exact_match=exact_match,
+                    llm_judge_score=llm_score,
+                    llm_judge_reasoning=llm_reasoning
+                )
+                results.append(eval_result)
+                self._save_result_to_db(eval_result) # Save to DB
+                
+                # Print immediate feedback
+                match_symbol = "✓" if exact_match else "✗"
+                print(f"  Expected: {expected_verdict} | Actual: {result.verdict} [{match_symbol}]")
+                print(f"  LLM Judge Score: {llm_score:.1f}/100")
+                print(f"  Agent Explanation: {result.explanation[:100]}...")
+                print()
+            except Exception as e:
+                print(f"  !! ERROR processing [Claim {claim_id}]: {e}")
+                print("  Skipping this claim and continuing...")
+                # Optionally, save a failed state to DB
+                eval_result = EvaluationResult(
+                    claim_id=claim_id,
+                    claim=claim,
+                    expected_verdict=expected_verdict,
+                    actual_verdict="ERROR",
+                    exact_match=False,
+                    llm_judge_score=0.0,
+                    llm_judge_reasoning=f"Agent failed with error: {e}"
+                )
+                results.append(eval_result)
+                self._save_result_to_db(eval_result)
+                print()
         
         # Calculate overall metrics
-        exact_match_accuracy = (exact_matches / len(test_claims)) * 100
-        avg_llm_score = total_llm_score / len(test_claims)
+        if not test_claims:
+            exact_match_accuracy = 0.0
+            avg_llm_score = 0.0
+        else:
+            exact_match_accuracy = (exact_matches / len(test_claims)) * 100
+            avg_llm_score = total_llm_score / len(test_claims)
         
         # Print summary
         print(f"\n{'='*80}")
@@ -271,25 +377,26 @@ REASONING: [Your detailed reasoning for the score]
 
 
 # Example usage and mock fact checker for testing
-def mock_fact_checker(claim: str) -> FactCheckResult:
-    """
-    Mock fact checker for demonstration purposes.
-    Replace this with your actual fact checker agent.
-    """
-    # This is a placeholder - replace with your actual agent
-    import random
-    
-    verdicts = ["TRUE", "FALSE", "CANNOT BE DETERMINED"]
-    verdict = random.choice(verdicts)
-    explanation = f"This claim is {verdict.lower()} because [mock reasoning]."
+def fact_checker_function(claim: str) -> FactCheckResult:
+    initial_state = FactCheckState(
+        claim_id=str(uuid.uuid4()),
+        original_claim=claim,
+        salesperson_id="salesperson_123",
+        client_context=None,
+        analyzed_claim={},
+        claim_verdict={},
+        evidence_log=[]
+    )
+
+    final_state = app.invoke(initial_state)
+    verdict = final_state['claim_verdict'].get('overall_verdict', 'CANNOT BE DETERMINED')
+    explanation = final_state['claim_verdict'].get('explanation', 'No explanation provided.')
     
     return FactCheckResult(claim, verdict, explanation)
 
 
 if __name__ == "__main__":
     # Initialize evaluator
-    # Make sure to set GEMINI_API_KEY environment variable
-    # export GEMINI_API_KEY="your-api-key-here"
     
     try:
         evaluator = FactCheckerEvaluator()
@@ -297,8 +404,8 @@ if __name__ == "__main__":
         # Run evaluation
         # Replace mock_fact_checker with your actual fact checker function
         results = evaluator.evaluate(
-            test_data_path='test_claims.json',
-            fact_checker_func=mock_fact_checker
+            test_data_path='done_claims.json',
+            fact_checker_func=fact_checker_function
         )
         
         # Save detailed report
