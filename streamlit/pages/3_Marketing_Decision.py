@@ -79,6 +79,12 @@ if 'workflow_complete' not in st.session_state:
 if 'verified_claims' not in st.session_state:
     st.session_state.verified_claims = []
 
+# Sync verified claims from fact checker session if present
+if st.session_state.get("materials_verified_claims"):
+    st.session_state.verified_claims = st.session_state.materials_verified_claims
+if 'verified_claims' not in st.session_state:
+    st.session_state.verified_claims = []
+
 # Check if claim from Fact Checker exists and add it to verified_claims
 if ('claim' in st.session_state and 
     'claim_verdict' in st.session_state and 
@@ -143,13 +149,18 @@ with st.sidebar:
     st.header("Verified Claims Input")
     
     # Show claims from Fact Checker if they exist
-    fact_checker_claims = [c for c in st.session_state.verified_claims if c.get('verdict')]
+    fact_checker_claims = [
+        c for c in st.session_state.get('verified_claims', []) if c.get('verdict')
+    ]
     if fact_checker_claims:
         st.success(f"✓ {len(fact_checker_claims)} claim(s) received from Fact Checker")
         for claim in fact_checker_claims:
-            with st.expander(f"🔍 {claim['claim_text'][:50]}..."):
+            claim_text = claim.get('claim') or claim.get('claim_text') or "Unknown claim"
+            with st.expander(f"🔍 {claim_text[:50]}..."):
                 st.write(f"**Verdict:** {claim.get('verdict', 'UNKNOWN')}")
-                st.write(f"**Confidence:** {claim.get('confidence', 0):.0%}")
+                confidence = claim.get('confidence')
+                if isinstance(confidence, (float, int)):
+                    st.write(f"**Confidence:** {confidence:.0%}")
                 if claim.get('explanation'):
                     st.write(f"**Explanation:** {claim['explanation']}")
     
@@ -170,11 +181,29 @@ with st.sidebar:
         st.success("Sample claims loaded!")
 
 # Main content area
-if 'verified_claims' in st.session_state:
+verified_claims = st.session_state.get('verified_claims', [])
+
+if verified_claims:
     st.header("Current Claims")
-    for i, claim in enumerate(st.session_state.verified_claims):
-        with st.expander(f"Claim {i+1}: {claim['claim_text'][:60]}..."):
-            st.write(f"**Confidence:** {claim['confidence']:.0%}")
+    for i, claim in enumerate(verified_claims):
+        claim_text = claim.get('claim') or claim.get('claim_text') or "Unknown claim"
+        confidence = claim.get('confidence')
+        with st.expander(f"Claim {i+1}: {claim_text[:60]}..."):
+            if isinstance(confidence, (float, int)):
+                st.write(f"**Confidence:** {confidence:.0%}")
+            verdict = claim.get('verdict') or claim.get('overall_verdict')
+            if verdict:
+                st.write(f"**Verdict:** {verdict}")
+            evidence = claim.get('evidence') or claim.get('main_evidence') or []
+            if evidence:
+                st.write("**Evidence:**")
+                for ev in evidence:
+                    source = ev.get('source', 'Unknown source') if isinstance(ev, dict) else str(ev)
+                    summary = ev.get('summary', '') if isinstance(ev, dict) else ''
+                    bullet = f"- {source}"
+                    if summary:
+                        bullet += f": {summary}"
+                    st.write(bullet)
     
     # Generate materials button
     if st.button("🎨 Generate Marketing Materials", type="primary"):
@@ -182,64 +211,86 @@ if 'verified_claims' in st.session_state:
             try:
                 st.info("Attempting to connect to FastAPI service...")
                 # Call FastAPI endpoint
-                payload = {
-                    "verified_claims": st.session_state.verified_claims,
-                    "salesperson_id": salesperson_id,
-                    "client_context": json.dumps({
-                        "client_name": client_name,
-                        "meeting_type": meeting_type
-                    }),
-                    "user_prompt": creative_prompt or None
-                }
-                
-                # Debug information
-                st.write("Making request to FastAPI service...")
-                st.write(f"Payload: {json.dumps(payload, indent=2)}")
-                
-                response = requests.post(
-                    f"{FASTAPI_INTERNAL_URL}/generate-materials",
-                    json=payload,
-                    timeout=3000  # Increased timeout for real generation
-                )
-                
-                if response.ok:
-                    result = response.json()
-                    st.success("✅ Materials generation complete!")
-                    
-                    # Store recommendations and update UI
-                    st.session_state.recommendations = result.get("recommendations", [])
-                    st.session_state.selected_materials = result.get("selected_materials", [])
-                    st.session_state.workflow_complete = True
-                    
-                    # Show recommendations
-                    st.header("📋 Material Recommendations")
-                    for i, rec in enumerate(result.get("recommendations", [])):
-                        priority_class = f"priority-{rec.get('priority', 'medium')}"
-                        
-                        st.markdown(f"""
-                        <div class="material-card {priority_class}">
-                            <h4>{rec['title']}</h4>
-                            <p><strong>Type:</strong> {rec['material_type'].replace('_', ' ').title()}</p>
-                            <p><strong>Priority:</strong> {rec['priority'].upper()}</p>
-                            <p><strong>Estimated Time:</strong> {rec['estimated_time_minutes']} minutes</p>
-                            <p><strong>Description:</strong> {rec['description']}</p>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    
-                    # Show any generated files
-                    if result.get("generated_files"):
-                        st.header("🖼️ Generated Materials")
-                        cols = st.columns(2)
-                        for i, file_path in enumerate(result["generated_files"]):
-                            col = cols[i % 2]
-                            with col:
-                                if file_path.lower().endswith(('.png', '.jpg', '.jpeg')):
-                                    st.image(f"{FASTAPI_PUBLIC_URL}{file_path}")
-                                elif file_path.lower().endswith('.mp4'):
-                                    st.video(f"{FASTAPI_PUBLIC_URL}{file_path}")
+                normalized_claims = []
+                for idx, claim in enumerate(verified_claims, start=1):
+                    if not isinstance(claim, dict):
+                        continue
+
+                    claim_text = claim.get('claim') or claim.get('claim_text')
+                    if not claim_text:
+                        continue
+
+                    normalized_claims.append({
+                        "claim_id": claim.get('claim_id') or f"claim_{idx:03d}",
+                        "claim": claim_text,
+                        "verdict": claim.get('verdict') or claim.get('overall_verdict', 'TRUE'),
+                        "confidence": claim.get('confidence', 0.75),
+                        "evidence": claim.get('evidence') or claim.get('main_evidence', []),
+                        "explanation": claim.get('explanation', ''),
+                        "pass_to_materials_agent": claim.get('pass_to_materials_agent', True),
+                    })
+
+                if not normalized_claims:
+                    st.error("No valid verified claims available for materials generation.")
                 else:
-                    st.error(f"Error response from FastAPI service: {response.status_code}")
-                    st.error(f"Response text: {response.text}")
+                    payload = {
+                        "verified_claims": normalized_claims,
+                        "salesperson_id": salesperson_id,
+                        "client_context": json.dumps({
+                            "client_name": client_name,
+                            "meeting_type": meeting_type
+                        }),
+                        "user_prompt": creative_prompt or None
+                    }
+                    
+                    # Debug information
+                    st.write("Making request to FastAPI service...")
+                    st.write(f"Payload: {json.dumps(payload, indent=2)}")
+                    
+                    response = requests.post(
+                        f"{FASTAPI_INTERNAL_URL}/generate-materials",
+                        json=payload,
+                        timeout=3000  # Increased timeout for real generation
+                    )
+                
+                    if response.ok:
+                        result = response.json()
+                        st.success("✅ Materials generation complete!")
+                        
+                        # Store recommendations and update UI
+                        st.session_state.recommendations = result.get("recommendations", [])
+                        st.session_state.selected_materials = result.get("selected_materials", [])
+                        st.session_state.workflow_complete = True
+                        
+                        # Show recommendations
+                        st.header("📋 Material Recommendations")
+                        for i, rec in enumerate(result.get("recommendations", [])):
+                            priority_class = f"priority-{rec.get('priority', 'medium')}"
+                            
+                            st.markdown(f"""
+                            <div class="material-card {priority_class}">
+                                <h4>{rec['title']}</h4>
+                                <p><strong>Type:</strong> {rec['material_type'].replace('_', ' ').title()}</p>
+                                <p><strong>Priority:</strong> {rec['priority'].upper()}</p>
+                                <p><strong>Estimated Time:</strong> {rec['estimated_time_minutes']} minutes</p>
+                                <p><strong>Description:</strong> {rec['description']}</p>
+                            </div>
+                            """, unsafe_allow_html=True)
+                        
+                        # Show any generated files
+                        if result.get("generated_files"):
+                            st.header("🖼️ Generated Materials")
+                            cols = st.columns(2)
+                            for i, file_path in enumerate(result["generated_files"]):
+                                col = cols[i % 2]
+                                with col:
+                                    if file_path.lower().endswith(('.png', '.jpg', '.jpeg')):
+                                        st.image(f"{FASTAPI_PUBLIC_URL}{file_path}")
+                                    elif file_path.lower().endswith('.mp4'):
+                                        st.video(f"{FASTAPI_PUBLIC_URL}{file_path}")
+                    else:
+                        st.error(f"Error response from FastAPI service: {response.status_code}")
+                        st.error(f"Response text: {response.text}")
                     
             except requests.exceptions.ConnectionError as e:
                 st.error("Could not connect to FastAPI service. Make sure the service is running.")

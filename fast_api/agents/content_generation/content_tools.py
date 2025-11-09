@@ -4,16 +4,29 @@ import json
 import replicate
 import requests
 from pathlib import Path
+
 # Use relative import within package
 from .content_generator import ContentGenerator
 
-# Initialize generator
-generator = ContentGenerator()
 
-# Create directory for AI-generated images using absolute path
-# Get the directory where this file (content_tools.py) is located
-TOOLS_DIR = Path(__file__).parent
-AI_IMAGE_DIR = TOOLS_DIR / "generated_content" / "ai_images"
+STATIC_ROOT = Path(__file__).resolve().parents[2] / "generated_content"
+STATIC_ROOT.mkdir(parents=True, exist_ok=True)
+
+
+def _to_public_path(path: Path) -> str:
+    """Convert absolute asset path to FastAPI public URL path."""
+    try:
+        relative = path.resolve().relative_to(STATIC_ROOT)
+        return f"/generated_content/{relative.as_posix()}"
+    except Exception:
+        return str(path)
+
+
+# Initialize generator rooted at static directory
+generator = ContentGenerator(output_dir=STATIC_ROOT)
+
+# Directory for AI generated imagery served via FastAPI static mount
+AI_IMAGE_DIR = STATIC_ROOT / "ai_images"
 AI_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
 print(f"🔧 AI_IMAGE_DIR set to: {AI_IMAGE_DIR.absolute()}")
 
@@ -46,9 +59,9 @@ def generate_market_share_chart(data: str) -> str:
                 "market_share": data_dict["market_share"]
             }
         }
-        
-        file_path = generator.generate(spec)
-        return f"✅ Generated market share chart: {file_path}"
+
+        file_path = Path(generator.generate(spec))
+        return f"✅ Generated market share chart: {_to_public_path(file_path)}"
         
     except Exception as e:
         return f"❌ Error generating market share chart: {str(e)}"
@@ -87,9 +100,9 @@ def generate_growth_trend_chart(data: str) -> str:
                 "y_axis_label": data_dict.get("y_axis_label", "Revenue ($M)")
             }
         }
-        
-        file_path = generator.generate(spec)
-        return f"✅ Generated growth trend chart: {file_path}"
+
+        file_path = Path(generator.generate(spec))
+        return f"✅ Generated growth trend chart: {_to_public_path(file_path)}"
         
     except Exception as e:
         return f"❌ Error generating growth trend chart: {str(e)}"
@@ -129,9 +142,9 @@ def generate_competitive_matrix(data: str) -> str:
                 "y_axis_label": data_dict.get("y_axis_label", "Strategic Value")
             }
         }
-        
-        file_path = generator.generate(spec)
-        return f"✅ Generated competitive matrix: {file_path}"
+
+        file_path = Path(generator.generate(spec))
+        return f"✅ Generated competitive matrix: {_to_public_path(file_path)}"
         
     except Exception as e:
         return f"❌ Error generating competitive matrix: {str(e)}"
@@ -171,9 +184,9 @@ def generate_swot_analysis(data: str) -> str:
                 "threats": data_dict.get("threats", [])
             }
         }
-        
-        file_path = generator.generate(spec)
-        return f"✅ Generated SWOT analysis: {file_path}"
+
+        file_path = Path(generator.generate(spec))
+        return f"✅ Generated SWOT analysis: {_to_public_path(file_path)}"
         
     except Exception as e:
         return f"❌ Error generating SWOT analysis: {str(e)}"
@@ -211,9 +224,9 @@ def generate_financial_comparison(data: str) -> str:
                 "entities": data_dict["entities"]
             }
         }
-        
-        file_path = generator.generate(spec)
-        return f"✅ Generated financial comparison: {file_path}"
+
+        file_path = Path(generator.generate(spec))
+        return f"✅ Generated financial comparison: {_to_public_path(file_path)}"
         
     except Exception as e:
         return f"❌ Error generating financial comparison: {str(e)}"
@@ -260,9 +273,9 @@ def generate_animated_video(data: str) -> str:
             "sections": data_dict.get("sections", []),
             "duration_per_section": data_dict.get("duration_per_section", 5)
         }
-        
-        file_path = generator.generate(spec)
-        return f"✅ Generated animated video presentation: {file_path}"
+
+        file_path = Path(generator.generate(spec))
+        return f"✅ Generated animated video presentation: {_to_public_path(file_path)}"
         
     except Exception as e:
         return f"❌ Error generating animated video: {str(e)}"
@@ -380,7 +393,7 @@ def generate_ai_image(data: str) -> str:
             traceback.print_exc()
             return error_msg
         
-        success_msg = f"✅ Generated AI image: {file_path}\nPrompt: {data_dict['prompt']}"
+        success_msg = f"✅ Generated AI image: {_to_public_path(file_path)}\nPrompt: {data_dict['prompt']}"
         print(success_msg)
         return success_msg
         

@@ -19,7 +19,7 @@ class AnimatedVideoGenerator:
     
     def __init__(self, output_dir: str = "generated_content"):
         self.output_dir = Path(output_dir)
-        self.output_dir.mkdir(exist_ok=True)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
         self.width = 1920  # Full HD
         self.height = 1080
         self.fps = 30

@@ -60,6 +60,10 @@ if 'claim' not in st.session_state:
     st.session_state.claim = ""
 if 'verifying_claim' not in st.session_state:
     st.session_state.verifying_claim = False
+if 'materials_verified_claims' not in st.session_state:
+    st.session_state.materials_verified_claims = []
+if 'client_context' not in st.session_state:
+    st.session_state.client_context = ""
 
 with st.sidebar:
     st.header("📋 Session Setup")
@@ -72,6 +76,7 @@ with st.sidebar:
         height=200,
         help="Background information about the client to help contextualize the fact-check."
     )
+    st.session_state.client_context = client_context
     if st.button("Reset Session"):
         st.session_state.clear()
         st.rerun()
@@ -133,10 +138,59 @@ if 'claim' in st.session_state:
             
             # 6. After the loop, save the final state and rerun
             if final_verdict:
+                claim_result = final_verdict.get("claim_verdict", {})
+
                 st.success("Claim verified!")
                 st.session_state.workflow_complete = True
-                st.session_state.claim_verdict = final_verdict["claim_verdict"]
+                st.session_state.claim_verdict = claim_result
                 st.session_state.verifying_claim = False
+
+                if isinstance(claim_result, dict):
+                    claim_text = st.session_state.claim
+                    verdict_flag = claim_result.get("pass_to_materials_agent", False)
+
+                    # Ensure we always operate on a list copy to avoid Streamlit mutation warnings
+                    current_claims = list(st.session_state.materials_verified_claims)
+
+                    def _confidence_from_verdict(verdict: str) -> float:
+                        verdict_upper = (verdict or "").upper()
+                        if verdict_upper == "TRUE":
+                            return 0.9
+                        if verdict_upper == "FALSE":
+                            return 0.1
+                        return 0.5
+
+                    if verdict_flag:
+                        verified_entry = {
+                            "claim_id": claim_result.get("claim_id") or f"claim_{len(current_claims) + 1:03d}",
+                            "claim": claim_text,
+                            "verdict": claim_result.get("overall_verdict", "UNKNOWN"),
+                            "confidence": claim_result.get("confidence", _confidence_from_verdict(claim_result.get("overall_verdict"))),
+                            "explanation": claim_result.get("explanation", ""),
+                            "evidence": claim_result.get("main_evidence", []),
+                            "pass_to_materials_agent": True,
+                        }
+
+                        # Update existing entry for the same claim text if present
+                        updated = False
+                        for idx, existing in enumerate(current_claims):
+                            if existing.get("claim") == claim_text:
+                                current_claims[idx] = verified_entry
+                                updated = True
+                                break
+                        if not updated:
+                            current_claims.append(verified_entry)
+
+                        st.session_state.materials_verified_claims = current_claims
+                        st.session_state.verified_claims = current_claims
+                        st.info("Claim flagged for materials generation.")
+                    else:
+                        filtered = [c for c in current_claims if c.get("claim") != claim_text]
+                        if len(filtered) != len(current_claims):
+                            st.session_state.materials_verified_claims = filtered
+                            st.session_state.verified_claims = filtered
+                            st.warning("Claim removed from materials queue (not approved by fact checker).")
+
                 st.rerun()
             else:
                 st.error("Failed to get a final verdict from the agent.")
