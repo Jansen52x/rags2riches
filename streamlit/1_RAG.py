@@ -129,7 +129,7 @@ if 'rag_results' in st.session_state:
         st.markdown("")  # Spacing
         st.subheader("📝 Answer")
         st.markdown(f"""
-        <div style="background-color: #000000; padding: 2rem; border-radius: 10px; border-left: 5px solid #1f77b4; margin: 1rem 0;">
+        <div style="padding: 2rem; border-radius: 10px; border: 2px solid #000000;  margin: 1rem 0;">
             {results['answer']}
         </div>
         """, unsafe_allow_html=True)

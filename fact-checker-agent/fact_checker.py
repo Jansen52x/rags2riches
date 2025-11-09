@@ -369,7 +369,8 @@ def query_rag_system(refined_query: str) -> str: # Not yet implemented
 # Creating search agent
 llm = ChatOllama(model="llama3.2:3b", temperature=0)
 bigLM = ChatGoogleGenerativeAI(model="gemini-2.5-pro", temperature=0)
-tools = [duckduckgo_search_text, tavily_search, search_wikipedia, get_news_articles, query_rag_system] # Agent needs the search tools, the scraper and the RAG query tool
+# tools = [duckduckgo_search_text, tavily_search, search_wikipedia, get_news_articles, query_rag_system] # Agent needs the search tools, the scraper and the RAG query tool
+tools = [query_rag_system] # Agent needs the search tools, the scraper and the RAG query tool
 agent = create_agent(bigLM, tools)
 
 graph = StateGraph(FactCheckState)

@@ -89,12 +89,7 @@ if 'claim' in st.session_state:
         st.info(f"📚 **From RAG Query:** {st.session_state.rag_context}")
         st.markdown("")
 
-    st.markdown(f"""
-    <div style="background-color: #000000; padding: 1.5rem; border-radius: 10px; border-left: 5px solid #ff7f0e;">
-        <strong>Claim:</strong> {st.session_state.claim}
-    </div>
-    """, unsafe_allow_html=True)
-    st.markdown("")
+    user_claim = st.text_input("Enter the claim you want to verify:", key="claim")
 
     # ===== THIS IS THE MODIFIED PART =====
     if st.button("Verify claim", type="primary", disabled=st.session_state.verifying_claim):

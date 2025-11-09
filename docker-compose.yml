@@ -89,7 +89,7 @@ services:
 
   fastapi_service:
     env_file:
-      - ./secrets.env
+      - secrets.env
     build:
       context: ./fast_api
       dockerfile: Dockerfile
@@ -117,14 +117,29 @@ services:
     networks:
       - agent_network
 
-  # fact-checker-agent:
+  # image-video-agent:
+  #   env_file:
+  #     - ./secrets.env
   #   build:
-  #     context: ./fact-checker-agent
+  #     context: ./image-video-agent
   #     dockerfile: Dockerfile
-  #   container_name: fact-checker-agent
-  #   depends_on:
-  #     - postgres
-  #     - chromadb
+  #   container_name: image-video-agent
+  #   environment:
+  #     - OLLAMA_HOST=http://host.docker.internal:11434
+  #   volumes:
+  #     # Mount source code for hot-reloading during development
+  #     - ./image-video-agent:/app
+  #     # Mount generated content directory to persist files
+  #     - ./image-video-agent/generated_content:/app/generated_content
+  #   restart: unless-stopped
+
+  # materials_service:
+  #   build:
+  #     context: .
+  #     dockerfile: ./materials-agent/Dockerfile
+  #   container_name: materials_service
+  #   env_file:
+  #     - ./secrets.env
   #   environment:
   #     - POSTGRES_USER=fact-checker
   #     - POSTGRES_PASSWORD=fact-checker
@@ -133,50 +148,15 @@ services:
   #     - POSTGRES_PORT=5432
   #     - CHROMA_API_HOST=http://chromadb:8000
   #     - OLLAMA_HOST=http://host.docker.internal:11434
-  #   ports:
-  #     - "5001:5001"
+  #   depends_on:
+  #     - postgres
+  #     - chromadb
+  #   volumes:
+  #     - ./materials-agent:/app
+  #   command: ["tail", "-f", "/dev/null"]
   #   restart: unless-stopped
-
-  image-video-agent:
-    env_file:
-      - ./secrets.env
-    build:
-      context: ./image-video-agent
-      dockerfile: Dockerfile
-    container_name: image-video-agent
-    environment:
-      - OLLAMA_HOST=http://host.docker.internal:11434
-    volumes:
-      # Mount generated content directory to persist files
-      - ./image-video-agent/generated_content:/app/generated_content
-    restart: unless-stopped
-    networks:
-      - agent_network
-
-  materials_service:
-    build:
-      context: .
-      dockerfile: ./materials-agent/Dockerfile
-    container_name: materials_service
-    env_file:
-      - ./secrets.env
-    environment:
-      - POSTGRES_USER=fact-checker
-      - POSTGRES_PASSWORD=fact-checker
-      - POSTGRES_DB=claim_verifications
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - CHROMA_API_HOST=http://chromadb:8000
-      - OLLAMA_HOST=http://host.docker.internal:11434
-    depends_on:
-      - postgres
-      - chromadb
-    volumes:
-      - ./materials-agent:/app
-    command: ["tail", "-f", "/dev/null"]
-    restart: unless-stopped
-    networks:
-      - agent_network
+  #   networks:
+  #     - agent_network
 
 volumes:
   pg_data:

@@ -9,6 +9,10 @@ import uuid
 from datetime import datetime
 import requests
 
+# st.session_state:
+# claim - original claim that was verified
+# client_context - context about the client that the sales agent is meeting
+
 # Streamlit page config
 st.set_page_config(
     page_title="Marketing Materials Decision Service",
