@@ -39,16 +39,19 @@ class LLMService:
         query: str,
         context: str,
         max_tokens: int = None,
-        temperature: float = None
+        temperature: float = None,
+        evaluate: bool = True  # Added parameter to control evaluation
     ) -> str:
         """
         Generate an answer using the LLM based on query and context
+        Automatically evaluates the response by default
 
         Args:
             query: User's question
             context: Retrieved context from RAG
             max_tokens: Maximum tokens to generate (default from config)
             temperature: Sampling temperature (default from config)
+            evaluate: Whether to run automatic evaluation (default: True)
 
         Returns:
             Generated answer as string
@@ -88,6 +91,14 @@ Answer:"""
             )
             answer = response.choices[0].message.content
             logger.info(f"Generated answer for query: {query[:50]}...")
+            
+            # Automatically evaluate if requested
+            if evaluate:
+                try:
+                    self.evaluate_rag_response(query, context, answer, save_to_csv=True)
+                except Exception as e:
+                    logger.error(f"Evaluation failed but continuing: {e}")
+            
             return answer
         except Exception as e:
             logger.error(f"Error generating answer: {e}")
@@ -303,6 +314,7 @@ Respond ONLY with valid JSON in this exact format:
     ) -> Tuple[str, Dict[str, any]]:
         """
         Generate an answer and optionally evaluate it
+        Returns both answer and evaluation results
 
         Args:
             query: User's question
@@ -314,13 +326,50 @@ Respond ONLY with valid JSON in this exact format:
         Returns:
             Tuple of (answer, evaluation_results)
         """
-        answer = self.generate(query, context, max_tokens, temperature)
-        
-        evaluation = None
-        if evaluate:
-            evaluation = self.evaluate_rag_response(query, context, answer)
-        
-        return answer, evaluation
+        max_tokens = max_tokens or settings.MAX_TOKENS
+        temperature = temperature or settings.TEMPERATURE
+
+        system_prompt = """You are an expert sales briefing assistant. You are helping a salesperson prepare for a client meeting.
+Use the following pieces of retrieved context to answer the question.
+
+Your goal is to be factual, concise, and directly useful.
+- Extract key facts, strategies, names, and numbers.
+- Structure your answer clearly. Use bullet points if helpful.
+- If the information is not in the context, state that clearly. DO NOT make up information.
+
+Question: {question}
+
+Context: {context}
+
+Answer:"""
+
+        user_prompt = f"""Context: {context}
+
+Question: {query}
+
+Answer:"""
+
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                max_tokens=max_tokens,
+                temperature=temperature
+            )
+            answer = response.choices[0].message.content
+            logger.info(f"Generated answer for query: {query[:50]}...")
+            
+            evaluation = None
+            if evaluate:
+                evaluation = self.evaluate_rag_response(query, context, answer)
+            
+            return answer, evaluation
+        except Exception as e:
+            logger.error(f"Error generating answer: {e}")
+            raise
 
     def health_check(self) -> bool:
         """
@@ -330,7 +379,8 @@ Respond ONLY with valid JSON in this exact format:
             True if service is healthy, False otherwise
         """
         try:
-            self.generate("test", "test", max_tokens=10)
+            # Use evaluate=False for health check to avoid unnecessary evaluation
+            self.generate("test", "test", max_tokens=10, evaluate=False)
             logger.info("NVIDIA LLM service is healthy")
             return True
         except Exception as e:
