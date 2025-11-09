@@ -118,19 +118,27 @@ def main(num_records=75, output_dir='output', generate_images=True, generate_pdf
         
         print(f"✓ Generated {doc_count} documents across {len(df_synthetic)} companies")
         
-        # Generate partnership documents
+        # Generate partnership documents (only between synthetic companies, not real ones)
         if generate_partnerships:
             print(f"\nGenerating {num_partnerships} partnership documents...")
-            all_companies = df_synthetic['client_data'].tolist()
-            partnership_docs = generate_shared_documents(all_companies, num_partnerships)
+            # Filter to only synthetic companies (not from seed CSV)
+            synthetic_companies_only = [
+                company for company in df_synthetic['client_data'].tolist() 
+                if not company.get('is_seed', False)
+            ]
             
-            for doc in partnership_docs:
-                doc['company_id'] = -1  # Special ID for shared documents
-                doc['document_id'] = doc_count
-                all_documents.append(doc)
-                doc_count += 1
-            
-            print(f"✓ Generated {len(partnership_docs)} partnership documents")
+            if len(synthetic_companies_only) >= 2:
+                partnership_docs = generate_shared_documents(synthetic_companies_only, num_partnerships)
+                
+                for doc in partnership_docs:
+                    doc['company_id'] = -1  # Special ID for shared documents
+                    doc['document_id'] = doc_count
+                    all_documents.append(doc)
+                    doc_count += 1
+                
+                print(f"✓ Generated {len(partnership_docs)} partnership documents (synthetic companies only)")
+            else:
+                print(f"⏭️  Skipped partnership documents (need at least 2 synthetic companies, have {len(synthetic_companies_only)})")
     
     # Step 6: Generate images for all documents
     if generate_images and multi_docs_per_company:
