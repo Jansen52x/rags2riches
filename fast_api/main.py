@@ -5,7 +5,9 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import os
+from pathlib import Path
 from fastapi.responses import StreamingResponse
+from fastapi.staticfiles import StaticFiles
 import logging
 from typing import List, Dict, Any, Optional
 from config import settings
@@ -42,6 +44,11 @@ query_builder = QueryBuilder(rag_service)
 
 # --- 3. Create the FastAPI app ---
 app = FastAPI()
+
+# Ensure generated content directory exists and mount it for static serving
+GENERATED_CONTENT_DIR = Path(__file__).resolve().parent / "generated_content"
+GENERATED_CONTENT_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/generated_content", StaticFiles(directory=GENERATED_CONTENT_DIR), name="generated_content")
 
 # CORS middleware
 app.add_middleware(
@@ -198,6 +205,8 @@ async def generate_materials_endpoint(request: MaterialsRequest):
             material_recommendations=[],
             selected_materials=[],
             generation_queue=[],
+            generated_files=[],
+            generation_status=None,
             decision_complete=False,
             user_feedback=None
         )
@@ -228,6 +237,20 @@ async def generate_materials_endpoint(request: MaterialsRequest):
             "error": str(e),
             "traceback": traceback.format_exc()
         }
+
+
+@app.get("/generated-files")
+async def list_generated_files() -> Dict[str, Any]:
+    """Return metadata for files in the generated content directory."""
+    files: List[Dict[str, str]] = []
+    for path in GENERATED_CONTENT_DIR.rglob("*"):
+        if path.is_file():
+            rel_path = path.relative_to(GENERATED_CONTENT_DIR)
+            files.append({
+                "name": rel_path.as_posix(),
+                "url": f"/generated_content/{rel_path.as_posix()}"
+            })
+    return {"files": sorted(files, key=lambda x: x["name"])}
 
 @app.post("/generate-materials-mock")
 async def generate_materials_mock(request: MaterialsRequest):

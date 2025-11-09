@@ -83,6 +83,9 @@ services:
       - ./streamlit:/app
     depends_on:
       - fastapi_service
+    environment:
+      - FASTAPI_INTERNAL_URL=http://fastapi_service:8001
+      - FASTAPI_PUBLIC_URL=http://localhost:8001
     restart: unless-stopped
     networks:
       - agent_network

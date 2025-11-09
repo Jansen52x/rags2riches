@@ -65,16 +65,12 @@ with st.sidebar:
     st.header("📋 Session Setup")
     salesperson_id = st.text_input("Salesperson ID", value="SP12345")
 
-    # Pre-fill client context with RAG context if available
-    default_context = "Small e-commerce startup in Singapore..."
-    if 'rag_context' in st.session_state:
-        default_context = st.session_state.rag_context
-
+    # Keep client context separate from RAG context
     client_context = st.text_area(
         "Client Context",
-        value=default_context,
+        value="Small e-commerce startup in Singapore...",
         height=200,
-        help="This context helps the fact-checker understand what to verify. Auto-filled from RAG if you came from there."
+        help="Background information about the client to help contextualize the fact-check."
     )
     if st.button("Reset Session"):
         st.session_state.clear()

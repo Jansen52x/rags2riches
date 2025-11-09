@@ -8,6 +8,10 @@ import json
 import uuid
 from datetime import datetime
 import requests
+import os
+# FastAPI endpoints
+FASTAPI_INTERNAL_URL = os.getenv("FASTAPI_INTERNAL_URL", "http://fastapi_service:8001")
+FASTAPI_PUBLIC_URL = os.getenv("FASTAPI_PUBLIC_URL", "http://localhost:8001")
 
 # st.session_state:
 # claim - original claim that was verified
@@ -155,7 +159,7 @@ if 'verified_claims' in st.session_state:
                 st.write(f"Payload: {json.dumps(payload, indent=2)}")
                 
                 response = requests.post(
-                    "http://fastapi_service:8001/generate-materials",
+                    f"{FASTAPI_INTERNAL_URL}/generate-materials",
                     json=payload,
                     timeout=3000  # Increased timeout for real generation
                 )
@@ -192,9 +196,9 @@ if 'verified_claims' in st.session_state:
                             col = cols[i % 2]
                             with col:
                                 if file_path.lower().endswith(('.png', '.jpg', '.jpeg')):
-                                    st.image(f"http://fastapi_service:8001{file_path}")
+                                    st.image(f"{FASTAPI_PUBLIC_URL}{file_path}")
                                 elif file_path.lower().endswith('.mp4'):
-                                    st.video(f"http://fastapi_service:8001{file_path}")
+                                    st.video(f"{FASTAPI_PUBLIC_URL}{file_path}")
                 else:
                     st.error(f"Error response from FastAPI service: {response.status_code}")
                     st.error(f"Response text: {response.text}")
@@ -213,7 +217,7 @@ if 'verified_claims' in st.session_state:
 st.markdown("---")
 if st.button("🔄 Refresh Generated Materials"):
     try:
-        response = requests.get("http://fastapi_service:8001/generated-files")
+        response = requests.get(f"{FASTAPI_INTERNAL_URL}/generated-files")
         if response.ok:
             files = response.json().get("files", [])
             if files:
@@ -225,9 +229,9 @@ if st.button("🔄 Refresh Generated Materials"):
                         name = file["name"]
                         url = file["url"]
                         if name.lower().endswith(('.png', '.jpg', '.jpeg')):
-                            st.image(f"http://fastapi_service:8001{url}", caption=name)
+                            st.image(f"{FASTAPI_PUBLIC_URL}{url}", caption=name)
                         elif name.lower().endswith('.mp4'):
-                            st.video(f"http://fastapi_service:8001{url}")
+                            st.video(f"{FASTAPI_PUBLIC_URL}{url}")
             else:
                 st.info("No generated materials found")
     except Exception as e:

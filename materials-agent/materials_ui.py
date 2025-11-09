@@ -232,6 +232,8 @@ with col1:
                             material_recommendations=[],
                             selected_materials=[],
                             generation_queue=[],
+                            generated_files=[],
+                            generation_status=None,
                             decision_complete=False,
                             user_feedback=None
                         )
