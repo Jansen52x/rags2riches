@@ -30,45 +30,78 @@ except ImportError:
 
 def _generate_with_gemini(prompt, fallback_content, is_seed_company=False):
     """
-    Helper to generate content with Gemini AI.
+    Helper to generate content with Gemini AI with Google Search Grounding.
+    For real companies: Auto-retry with exponential backoff on rate limits.
+    For synthetic companies: Fallback to Faker on errors.
     
     Args:
         prompt (str): The prompt to send to Gemini
         fallback_content (str): Content to use if Gemini fails (only for synthetic companies)
-        is_seed_company (bool): If True, raise exception on Gemini failure (don't use fallback)
+        is_seed_company (bool): If True, auto-retry on rate limits (never use fallback)
         
     Returns:
         str: Generated content from Gemini or fallback
         
     Raises:
-        Exception: If Gemini fails and is_seed_company=True
+        Exception: If Gemini fails after retries for seed companies
     """
     if gemini_model is None:
         if is_seed_company:
             raise Exception("Gemini not available but required for seed company")
         return fallback_content
     
-    try:
-        response = gemini_model.generate_content(prompt)
-        time.sleep(0.5)  # Rate limiting
-        return response.text.strip()
-    except Exception as e:
-        if is_seed_company:
-            # For real companies, don't mix Gemini + Faker - raise the error
-            print(f"⚠️  Gemini API error for real company: {e}")
-            raise  # Re-raise to be caught by generate_all_documents_for_company
-        else:
-            # For synthetic companies, fallback to Faker is OK
-            print(f"⚠️  Gemini API error in document generation: {e}. Using Faker fallback.")
-            return fallback_content
+    max_retries = 5 if is_seed_company else 0  # Retry for real companies only
+    retry_count = 0
+    
+    while retry_count <= max_retries:
+        try:
+            # Generate content with Gemini (grounding via prompt instructions)
+            response = gemini_model.generate_content(prompt)
+            time.sleep(4.0)  # Rate limit delay (60s / 15 = 4s per request)
+            return response.text.strip()
+            
+        except Exception as e:
+            error_msg = str(e)
+            
+            # Check if it's a rate limit error (429)
+            if "429" in error_msg or "Resource exhausted" in error_msg:
+                if is_seed_company and retry_count < max_retries:
+                    # Auto-retry for real companies with exponential backoff
+                    wait_time = 60 * (2 ** retry_count)  # 60s, 120s, 240s, 480s, 960s
+                    retry_count += 1
+                    print(f"      ⏳ Rate limit hit. Waiting {wait_time}s before retry {retry_count}/{max_retries}...")
+                    time.sleep(wait_time)
+                    continue  # Retry the request
+                elif is_seed_company:
+                    # Exhausted all retries for real company
+                    print(f"      ❌ Failed after {max_retries} retries: {e}")
+                    raise
+                else:
+                    # Synthetic company - use fallback
+                    print(f"      ⚠️  Gemini error (using Faker fallback): {e}")
+                    return fallback_content
+            else:
+                # Non-rate-limit error
+                if is_seed_company:
+                    print(f"      ❌ Gemini API error for real company: {e}")
+                    raise
+                else:
+                    print(f"      ⚠️  Gemini error (using Faker fallback): {e}")
+                    return fallback_content
+    
+    # Should never reach here, but just in case
+    if is_seed_company:
+        raise Exception(f"Failed to generate content after {max_retries} retries")
+    return fallback_content
 
 
-def generate_product_brochure(client_data, use_gemini=False):
+def generate_product_brochure(client_data, use_gemini=False, variation='A'):
     """Generates a product-focused brochure.
     
     Args:
         client_data (dict): Company information
         use_gemini (bool): If True, use Gemini AI for content generation
+        variation (str): 'A' or 'B' to generate different product focus for variety
     """
     company_name = client_data.get('company_name', 'Company')
     industry = client_data.get('industry', 'Industry')
@@ -86,12 +119,31 @@ def generate_product_brochure(client_data, use_gemini=False):
     
     # Generate content with Gemini or Faker
     if use_gemini and gemini_model is not None:
-        prompt = f"""Write a professional product brochure for {company_name} in the {industry} industry.
-Product name: {product_name}
-Company description: {company_desc}
+        # Different prompts for variation A (image) and B (PDF)
+        variation_instruction = ""
+        if variation == 'A':
+            variation_instruction = "Focus on ONE of their flagship or primary products/services."
+        else:  # variation == 'B'
+            variation_instruction = "Focus on a DIFFERENT product/service line. If they have multiple offerings, choose a secondary, complementary, or enterprise-tier product that's distinct from their main consumer offering."
+        
+        prompt = f"""You are writing a professional product brochure for {company_name}.
 
-Write 3-4 sentences describing the product, its key features, and benefits. Make it sound professional and compelling.
-Focus on what makes this product unique and valuable to customers."""
+Company: {company_name}
+Industry: {industry}
+Description: {company_desc}
+
+IMPORTANT: {variation_instruction}
+
+Write a detailed, realistic product brochure (250-300 words) that includes:
+1. A REAL product/service that {company_name} actually offers (use your knowledge of this company)
+2. Specific features and capabilities (be concrete and detailed)
+3. Target customers and use cases
+4. Competitive advantages and unique value proposition
+5. Technical specifications or key metrics where applicable
+
+Be specific - mention actual product names, real features, and genuine capabilities of {company_name}.
+Make it sound like an actual {company_name} marketing document.
+Write in a professional, compelling tone."""
         
         fallback_content = (
             f"Introducing {product_name} by {company_name}. "
@@ -125,12 +177,13 @@ Focus on what makes this product unique and valuable to customers."""
     }
 
 
-def generate_services_brochure(client_data, use_gemini=False):
+def generate_services_brochure(client_data, use_gemini=False, variation='A'):
     """Generates a services-focused brochure.
     
     Args:
         client_data (dict): Company information
         use_gemini (bool): If True, use Gemini AI for content generation
+        variation (str): 'A' or 'B' to generate different service focus for variety
     """
     company_name = client_data.get('company_name', 'Company')
     industry = client_data.get('industry', 'Industry')
@@ -144,11 +197,31 @@ def generate_services_brochure(client_data, use_gemini=False):
     ]
     
     if use_gemini and gemini_model is not None:
-        prompt = f"""Write a professional services brochure for {company_name} in the {industry} industry.
-Company description: {company_desc}
+        # Different prompts for variation A (image) and B (PDF)
+        variation_instruction = ""
+        if variation == 'A':
+            variation_instruction = "Focus on their core service offerings or primary business services."
+        else:  # variation == 'B'
+            variation_instruction = "Focus on DIFFERENT or secondary service lines. If they offer multiple service categories (e.g., consulting, support, implementation), highlight services that complement but differ from their main offerings."
+        
+        prompt = f"""You are writing a professional services brochure for {company_name}.
 
-Write 3-4 sentences describing the company's services, expertise, and value proposition. 
-Highlight what makes their services unique and beneficial to clients."""
+Company: {company_name}
+Industry: {industry}
+Description: {company_desc}
+
+IMPORTANT: {variation_instruction}
+
+Write a detailed services brochure (250-300 words) that includes:
+1. REAL services that {company_name} actually provides (use your knowledge of this company)
+2. Specific service offerings with concrete details
+3. Target market and client types
+4. Service delivery approach and methodologies
+5. Success metrics, certifications, or partnerships (if applicable for this company)
+
+Be specific - mention actual services, real capabilities, and genuine expertise areas of {company_name}.
+Make it sound like an actual {company_name} services document.
+Write in a professional, authoritative tone."""
         
         fallback_content = (
             f"{company_name} offers comprehensive services in {industry}. "
@@ -202,14 +275,23 @@ def generate_financial_report(client_data, quarter=None, year=None, use_gemini=F
     profit_margin = random.uniform(5, 30)
     
     if use_gemini and gemini_model is not None:
-        prompt = f"""Write a brief financial report summary for {company_name} in the {industry} industry.
-Period: {quarter} {year}
-Revenue: ${revenue:,.2f}
-Growth: {growth:.1f}%
-Profit Margin: {profit_margin:.1f}%
+        prompt = f"""You are writing a realistic financial report for {company_name}.
 
-Write 3-4 sentences covering: executive summary, key highlights, market conditions, and future outlook.
-Make it sound professional and realistic for a financial report."""
+Company: {company_name}
+Industry: {industry}
+Period: {quarter} {year}
+
+Write a professional financial report (300-350 words) that includes:
+1. Executive summary with realistic financial performance for {company_name}
+2. Revenue figures and growth metrics (be specific - use your knowledge of {company_name}'s actual scale)
+3. Key business highlights and achievements from this period
+4. Market conditions and competitive landscape in the {industry} sector
+5. Forward-looking statements and guidance
+
+Base the numbers and narrative on what would be realistic for {company_name} given its actual size and business model.
+Include specific business segments, product lines, or geographic regions where applicable.
+Make it sound like an actual {company_name} investor relations document.
+Write in a formal, professional tone suitable for investors and analysts."""
         
         fallback_content = (
             f"{company_name} Financial Report - {quarter} {year}. "
@@ -272,20 +354,35 @@ def generate_press_release(client_data, use_gemini=False):
     topic = random.choice(topics)
     
     if use_gemini and gemini_model is not None:
-        prompt = f"""Write a professional press release for {company_name} in the {industry} industry.
-Topic: {topic}
-Company description: {company_desc}
+        prompt = f"""You are writing a professional press release for {company_name}.
+
+Company: {company_name}
+Industry: {industry}
+Description: {company_desc}
 Contact: {contact_person} ({contact_email})
 
-Format as a press release with:
-1. "FOR IMMEDIATE RELEASE" header
-2. Headline: "{company_name} {topic}"
-3. Location and date
-4. 3-4 sentences announcing the news with professional details
-5. A quote from the spokesperson
-6. Contact information
+Write a realistic press release (250-300 words) announcing a significant company development. 
 
-Keep it concise and professional."""
+Choose ONE realistic announcement that {company_name} might actually make:
+- Product launch (use actual {company_name} product type)
+- Partnership announcement (with realistic partner)
+- Financial milestone or earnings report
+- Expansion or new market entry
+- Leadership appointment or organizational change
+- Award or recognition
+
+Include:
+1. "FOR IMMEDIATE RELEASE" header
+2. Compelling headline with location and date
+3. Opening paragraph with the key announcement
+4. Supporting details and context (2-3 paragraphs)
+5. A quote from a realistic executive (CEO, VP, etc.)
+6. Company boilerplate paragraph
+7. Contact information
+
+Base the announcement on something that would be realistic and newsworthy for {company_name}.
+Use industry-appropriate language and tone.
+Make it sound like an actual {company_name} press release."""
         
         fallback_content = (
             f"FOR IMMEDIATE RELEASE. "
@@ -353,11 +450,23 @@ def generate_advertisement(client_data, use_gemini=False):
     )
     
     if use_gemini and gemini_model is not None:
-        prompt = f"""Write a professional advertisement for {company_name} in the {industry} industry.
-Headline: {headline}
+        prompt = f"""You are writing a professional advertisement for {company_name}.
 
-Write 3-4 compelling sentences highlighting the company's value, benefits, and call-to-action.
-Make it persuasive and engaging for potential customers."""
+Company: {company_name}
+Industry: {industry}
+
+Write a compelling advertisement (200-250 words) that includes:
+1. An attention-grabbing headline
+2. Clear value proposition highlighting {company_name}'s actual strengths
+3. Specific benefits or features (use real {company_name} offerings)
+4. Target audience identification
+5. Social proof or credibility indicators (awards, customer count, years in business, etc. - use realistic info for {company_name})
+6. Strong call-to-action
+
+Make it persuasive and customer-focused.
+Use language and messaging that {company_name} would actually use in their marketing.
+Include specific, concrete benefits rather than generic claims.
+Write in an engaging, professional tone."""
         
         is_seed = client_data.get('is_seed', False)
         content = _generate_with_gemini(prompt, fallback_content, is_seed_company=is_seed)
@@ -554,7 +663,7 @@ Include the following sections:
 
 Make it professional, detailed, and optimistic while remaining realistic. Target length: 400-500 words."""
         
-        is_seed = client_data.get('is_seed', False)
+        is_seed = company_data.get('is_seed', False)
         content = _generate_with_gemini(prompt, fallback_content, is_seed_company=is_seed)
     else:
         content = fallback_content
@@ -587,38 +696,65 @@ def generate_all_documents_for_company(client_data, num_docs_range=(5, 10), use_
     
     try:
         # Always include at least one of each core type
-        documents.append(generate_product_brochure(client_data, use_gemini=use_gemini))
-        documents.append(generate_services_brochure(client_data, use_gemini=use_gemini))
+        # Generate TWO versions for product and services brochures (one for image, one for PDF)
+        if use_gemini:
+            print(f"      📄 Generating product brochure...")
+        product_brochure_img = generate_product_brochure(client_data, use_gemini=use_gemini, variation='A')
+        product_brochure_pdf = generate_product_brochure(client_data, use_gemini=use_gemini, variation='B')
+        # Combine both versions into one document with content_image and content_pdf
+        product_brochure = product_brochure_img.copy()
+        product_brochure['content_image'] = product_brochure_img['content']
+        product_brochure['content_pdf'] = product_brochure_pdf['content']
+        documents.append(product_brochure)
+        
+        if use_gemini:
+            print(f"      📄 Generating services brochure...")
+        services_brochure_img = generate_services_brochure(client_data, use_gemini=use_gemini, variation='A')
+        services_brochure_pdf = generate_services_brochure(client_data, use_gemini=use_gemini, variation='B')
+        # Combine both versions
+        services_brochure = services_brochure_img.copy()
+        services_brochure['content_image'] = services_brochure_img['content']
+        services_brochure['content_pdf'] = services_brochure_pdf['content']
+        documents.append(services_brochure)
+        
+        if use_gemini:
+            print(f"      📄 Generating financial report...")
         documents.append(generate_financial_report(client_data, use_gemini=use_gemini))
+        
+        if use_gemini:
+            print(f"      📄 Generating press release...")
         documents.append(generate_press_release(client_data, use_gemini=use_gemini))
         
         # Add additional random documents
-        # For real companies: exclude internal memos (private/confidential)
+        # For real companies: exclude internal memos (private) and shareholder reports (hard to verify)
+        # Focus on documents with easily verifiable, realistic content
         if is_seed_company:
             available_generators = [
-                lambda cd: generate_product_brochure(cd, use_gemini=use_gemini),
-                lambda cd: generate_services_brochure(cd, use_gemini=use_gemini),
-                lambda cd: generate_financial_report(cd, use_gemini=use_gemini),
-                lambda cd: generate_press_release(cd, use_gemini=use_gemini),
-                lambda cd: generate_advertisement(cd, use_gemini=use_gemini),
-                lambda cd: generate_case_study(cd, use_gemini=use_gemini),
-                lambda cd: generate_shareholder_report(cd, use_gemini=use_gemini)
+                ('product_brochure', lambda cd: generate_product_brochure(cd, use_gemini=use_gemini)),
+                ('services_brochure', lambda cd: generate_services_brochure(cd, use_gemini=use_gemini)),
+                ('financial_report', lambda cd: generate_financial_report(cd, use_gemini=use_gemini)),
+                ('press_release', lambda cd: generate_press_release(cd, use_gemini=use_gemini)),
+                ('advertisement', lambda cd: generate_advertisement(cd, use_gemini=use_gemini)),
+                ('case_study', lambda cd: generate_case_study(cd, use_gemini=use_gemini)),
+                # SKIP shareholder_report for real companies - harder to make 100% accurate
             ]
         else:
             # For synthetic companies: include all document types
             available_generators = [
-                lambda cd: generate_product_brochure(cd, use_gemini=use_gemini),
-                lambda cd: generate_services_brochure(cd, use_gemini=use_gemini),
-                lambda cd: generate_financial_report(cd, use_gemini=use_gemini),
-                lambda cd: generate_press_release(cd, use_gemini=use_gemini),
-                lambda cd: generate_advertisement(cd, use_gemini=use_gemini),
-                lambda cd: generate_case_study(cd, use_gemini=use_gemini),
-                lambda cd: generate_internal_memo(cd, use_gemini=use_gemini),
-                lambda cd: generate_shareholder_report(cd, use_gemini=use_gemini)
+                ('product_brochure', lambda cd: generate_product_brochure(cd, use_gemini=use_gemini)),
+                ('services_brochure', lambda cd: generate_services_brochure(cd, use_gemini=use_gemini)),
+                ('financial_report', lambda cd: generate_financial_report(cd, use_gemini=use_gemini)),
+                ('press_release', lambda cd: generate_press_release(cd, use_gemini=use_gemini)),
+                ('advertisement', lambda cd: generate_advertisement(cd, use_gemini=use_gemini)),
+                ('case_study', lambda cd: generate_case_study(cd, use_gemini=use_gemini)),
+                ('internal_memo', lambda cd: generate_internal_memo(cd, use_gemini=use_gemini)),
+                ('shareholder_report', lambda cd: generate_shareholder_report(cd, use_gemini=use_gemini))
             ]
         
-        for _ in range(num_docs - 4):
-            generator = random.choice(available_generators)
+        for i in range(num_docs - 4):
+            doc_type, generator = random.choice(available_generators)
+            if use_gemini:
+                print(f"      📄 Generating {doc_type.replace('_', ' ')}... ({i+5}/{num_docs})")
             documents.append(generator(client_data))
         
         return documents
