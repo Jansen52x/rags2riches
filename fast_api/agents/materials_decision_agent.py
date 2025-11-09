@@ -560,7 +560,8 @@ def trigger_generation_node(state: MaterialsDecisionState) -> Command:
         return Command(update={"status": "no_materials_to_generate"})
     
     # Trigger content generation
-    result = trigger_content_generation(json.dumps(generation_queue))
+    # @tool returns a StructuredTool which must be invoked explicitly
+    result = trigger_content_generation.invoke(json.dumps(generation_queue))
     result_data = json.loads(result)
     
     return Command(update={

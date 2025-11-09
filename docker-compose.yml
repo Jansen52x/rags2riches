@@ -70,7 +70,7 @@ services:
       - postgres
     restart: unless-stopped
     networks:
-     - agent_network
+      - agent_network
 
   streamlit_service:
     build:
@@ -79,18 +79,17 @@ services:
     container_name: streamlit_service
     ports:
       - "8501:8501"
+    volumes:
+      - ./streamlit:/app
     depends_on:
       - fastapi_service
-    volumes:
-      # Mount source code for hot-reloading during development
-      - ./streamlit:/app
     restart: unless-stopped
     networks:
       - agent_network
 
   fastapi_service:
     env_file:
-      - ./fast_api/secrets.env
+      - ./secrets.env
     build:
       context: ./fast_api
       dockerfile: Dockerfile
@@ -101,8 +100,6 @@ services:
       - postgres
       - chromadb
     volumes:
-      # Mount source code for hot-reloading during development
-      - ./fast_api:/app
       # Persist generated content (charts, AI images, videos)
       - ./fast_api/generated_content:/app/generated_content
     environment:
@@ -111,10 +108,11 @@ services:
       - POSTGRES_DB=claim_verifications
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
+      - CHROMA_API_HOST=http://chromadb:8000
       - CHROMADB_HOST=chromadb
       - CHROMADB_PORT=8000
-      - CHROMA_COLLECTION_NAME=rag_documents
       - OLLAMA_HOST=http://host.docker.internal:11434
+      - USE_RERANKER=false
     restart: unless-stopped
     networks:
       - agent_network
@@ -149,10 +147,33 @@ services:
     environment:
       - OLLAMA_HOST=http://host.docker.internal:11434
     volumes:
-      # Mount source code for hot-reloading during development
-      - ./image-video-agent:/app
       # Mount generated content directory to persist files
       - ./image-video-agent/generated_content:/app/generated_content
+    restart: unless-stopped
+    networks:
+      - agent_network
+
+  materials_service:
+    build:
+      context: .
+      dockerfile: ./materials-agent/Dockerfile
+    container_name: materials_service
+    env_file:
+      - ./secrets.env
+    environment:
+      - POSTGRES_USER=fact-checker
+      - POSTGRES_PASSWORD=fact-checker
+      - POSTGRES_DB=claim_verifications
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - CHROMA_API_HOST=http://chromadb:8000
+      - OLLAMA_HOST=http://host.docker.internal:11434
+    depends_on:
+      - postgres
+      - chromadb
+    volumes:
+      - ./materials-agent:/app
+    command: ["tail", "-f", "/dev/null"]
     restart: unless-stopped
     networks:
       - agent_network

@@ -7,8 +7,8 @@ from pydantic import BaseModel, Field
 import os
 from fastapi.responses import StreamingResponse
 import logging
-from config import settings
 from typing import List, Dict, Any, Optional
+from config import settings
 from rag_services.embedding_service import EmbeddingService
 from rag_services.llm_service import LLMService
 from rag_services.rag_service import RAGService
@@ -219,7 +219,6 @@ async def generate_materials_endpoint(request: MaterialsRequest):
             "selected_materials": final_state["selected_materials"],
             "generation_status": final_state.get("generation_status", "completed")
         }
-        
     except Exception as e:
         import traceback
         print(f"\n❌ Error in generate_materials_endpoint: {str(e)}")
@@ -229,6 +228,38 @@ async def generate_materials_endpoint(request: MaterialsRequest):
             "error": str(e),
             "traceback": traceback.format_exc()
         }
+
+@app.post("/generate-materials-mock")
+async def generate_materials_mock(request: MaterialsRequest):
+    """
+    Mock endpoint for UI testing that returns instant recommendations without
+    invoking heavy generation or external LLMs. Useful for frontend testing.
+    """
+    recommendations = [
+        {
+            "title": "One-slide company summary",
+            "material_type": "one_pager",
+            "priority": "medium",
+            "estimated_time_minutes": 15,
+            "description": "A concise summary slide highlighting market share and expansion facts."
+        },
+        {
+            "title": "Customer expansion infographic",
+            "material_type": "infographic",
+            "priority": "high",
+            "estimated_time_minutes": 45,
+            "description": "Visual showing expansion across Southeast Asia."
+        }
+    ]
+
+    return {
+        "status": "success",
+        "session_id": str(uuid.uuid4()),
+        "generated_files": [],
+        "generation_count": 0,
+        "recommendations": recommendations,
+        "selected_materials": []
+    }
 
 # --- Add other endpoints for RAG ---
 # @app.post("/chat-rag")

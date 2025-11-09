@@ -14,6 +14,12 @@ python-dotenv
 lxml_html_clean
 fastapi
 uvicorn
+pydantic-settings
+openai
+chromadb
+sentence_transformers
+transformers
+torch
 # Materials + Content Generation Dependencies
 plotly==5.24.1
 kaleido
@@ -23,8 +29,3 @@ replicate
 requests
 numpy
 langchain-anthropic
-# RAG Dependencies
-chromadb
-sentence-transformers
-openai
-pydantic-settings
