@@ -9,6 +9,9 @@ import uuid
 from datetime import datetime
 import requests
 import os
+
+print("[Marketing] Session keys:", list(st.session_state.keys()))
+print("[Marketing] materials_verified_claims:", st.session_state.get("materials_verified_claims"))
 # FastAPI endpoints
 FASTAPI_INTERNAL_URL = os.getenv("FASTAPI_INTERNAL_URL", "http://fastapi_service:8001")
 FASTAPI_PUBLIC_URL = os.getenv("FASTAPI_PUBLIC_URL", "http://localhost:8001")

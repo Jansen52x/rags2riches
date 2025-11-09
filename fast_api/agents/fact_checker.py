@@ -225,6 +225,45 @@ async def process_search_result(state: FactCheckState) -> FactCheckState:
         # fallback in case the LLM outputs plain text instead of valid JSON
         claim_result = response.content
 
+    def _normalize_bool(value):
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            return normalized in {"true", "yes", "y", "1", "pass", "approve"}
+        if value is None:
+            return None
+        return bool(value)
+
+    def _is_positive_verdict(verdict: str) -> bool:
+        verdict_upper = (verdict or "").upper()
+        return verdict_upper in {
+            "TRUE",
+            "SUPPORTED",
+            "ACCURATE",
+            "VERIFIED",
+            "YES",
+            "PASS",
+        }
+
+    if isinstance(claim_result, dict):
+        verdict_flag = _normalize_bool(claim_result.get("pass_to_materials_agent"))
+        overall_verdict = claim_result.get("overall_verdict")
+
+        if verdict_flag is None:
+            verdict_flag = _is_positive_verdict(overall_verdict)
+
+        if _is_positive_verdict(overall_verdict):
+            verdict_flag = True
+
+        claim_result["pass_to_materials_agent"] = bool(verdict_flag)
+
+        # Ensure optional fields have sensible defaults
+        claim_result.setdefault("main_evidence", [])
+        claim_result.setdefault("explanation", "")
+        if "confidence" not in claim_result:
+            claim_result["confidence"] = 0.85 if claim_result["pass_to_materials_agent"] else 0.5
+
     print("Processed search result for claim.")
     
     return {"claim_verdict": claim_result}

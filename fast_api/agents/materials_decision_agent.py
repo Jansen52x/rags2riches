@@ -14,6 +14,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 import textwrap
 import traceback
+import os
 
 # Use proper package import - no sys.path hacking needed!
 from .content_generation.content_generation_agent import create_content_generation_agent
@@ -22,6 +23,9 @@ from .content_generation.content_generation_agent import create_content_generati
 GENERATED_CONTENT_DIR = Path(__file__).resolve().parent.parent / "generated_content"
 FALLBACK_IMAGE_DIR = GENERATED_CONTENT_DIR / "images"
 FALLBACK_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+
+EVAL_MODE_ENABLED = os.getenv("MATERIALS_AGENT_MODE", "").lower() in {"heuristic", "deterministic"}
+SKIP_DB_SAVE = os.getenv("MATERIALS_AGENT_SKIP_DB", "").lower() in {"1", "true", "yes", "on"}
 
 
 # State definitions
