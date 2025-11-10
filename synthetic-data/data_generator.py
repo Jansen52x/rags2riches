@@ -57,9 +57,9 @@ gemini_model = None
 if GEMINI_AVAILABLE and USE_GEMINI and GEMINI_API_KEY:
     try:
         genai.configure(api_key=GEMINI_API_KEY)
-        # Use the latest fast model (gemini-2.0-flash is fast and free)
-        gemini_model = genai.GenerativeModel('gemini-2.0-flash')
-        print("✓ Gemini AI initialized successfully (using gemini-2.0-flash)")
+        # Use the latest fast model (gemini-2.5-flash is the newest and fastest)
+        gemini_model = genai.GenerativeModel('gemini-2.5-flash')
+        print("✓ Gemini AI initialized successfully (using gemini-2.5-flash)")
     except Exception as e:
         print(f"⚠️  Failed to initialize Gemini AI: {e}")
         print("   Falling back to Faker")
