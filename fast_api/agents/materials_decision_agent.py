@@ -268,11 +268,18 @@ def create_generation_queue(state: MaterialsDecisionState) -> Command:
     # Create generation tasks with specific instructions
     generation_queue = []
     
+    print(f"\n🎯 Creating generation queue from {len(selected_materials)} selected materials:")
+    
     for material in selected_materials:
+        material_type = material["material_type"]
+        print(f"\n   📝 Material: {material['title']}")
+        print(f"      Type: {material_type}")
+        print(f"      Priority: {material.get('priority', 'N/A')}")
+        
         generation_task = {
             "task_id": str(uuid.uuid4()),
             "material_id": material["material_id"],
-            "type": material["material_type"],
+            "type": material["material_type"],  # This is what content agent will read
             "title": material["title"],
             "description": material["description"],
             "content_requirements": material["content_requirements"],
@@ -280,95 +287,16 @@ def create_generation_queue(state: MaterialsDecisionState) -> Command:
             "priority": material["priority"],
             "status": "pending",
             "created_at": datetime.now(ZoneInfo("Asia/Singapore")).isoformat(),
-            # Include user-provided creative prompt so downstream generators can honor it
-            "user_prompt": user_prompt,
-            "instructions": generate_creation_instructions(material, user_prompt)
+            "user_prompt": user_prompt  # User creative guidance
         }
         generation_queue.append(generation_task)
+        print(f"      ✓ Added to queue with type='{material_type}'")
+    
+    print(f"\n✅ Generation queue created with {len(generation_queue)} tasks")
     
     return Command(
         update={"generation_queue": generation_queue}
     )
-
-def generate_creation_instructions(material: Dict, user_prompt: Optional[str] = None) -> str:
-    """Generate specific instructions for material creation agents"""
-    
-    material_type = material["material_type"]
-    content_req = material["content_requirements"]
-    
-    base_instruction = f"""
-    Create a {material_type} with the following specifications:
-    
-    Title: {material["title"]}
-    Description: {material["description"]}
-    
-    Content Requirements:
-    - Style: {content_req.get("style", "professional")}
-    - Data visualization: {content_req.get("data_visualization", "optional")}
-    - Text amount: {content_req.get("text_amount", "moderate")}
-    - Color scheme: {content_req.get("color_scheme", "corporate")}
-    """
-
-    if user_prompt:
-        base_instruction += f"\nAdditional creative direction: {user_prompt}\n"
-    
-    if material_type == "slide":
-        return base_instruction + """
-        
-        SLIDE CREATION INSTRUCTIONS:
-        - Create a single, impactful slide
-        - Include headline, key statistics, and supporting visual
-        - Use bullet points sparingly (max 3-4 points)
-        - Ensure text is readable from a distance
-        - Include source attribution for statistics
-        """
-    
-    elif material_type == "infographic":
-        return base_instruction + """
-        
-        INFOGRAPHIC CREATION INSTRUCTIONS:
-        - Design a visually appealing infographic
-        - Combine statistics, icons, and minimal text
-        - Use a clear visual hierarchy
-        - Include a compelling headline and conclusion
-        - Optimize for social sharing if applicable
-        """
-    
-    elif material_type == "chart":
-        return base_instruction + """
-        
-        CHART CREATION INSTRUCTIONS:
-        - Create clear, accurate data visualizations
-        - Choose appropriate chart type for the data
-        - Include clear labels and legends
-        - Use color coding effectively
-        - Add title and source information
-        """
-    
-    elif material_type == "video_explainer":
-        return base_instruction + """
-        
-        VIDEO CREATION INSTRUCTIONS:
-        - Create a 30-60 second explainer video
-        - Include voice-over script
-        - Design simple, clean visuals
-        - Use animations to highlight key points
-        - Include call-to-action at the end
-        """
-    
-    elif material_type == "presentation_deck":
-        return base_instruction + """
-        
-        PRESENTATION DECK INSTRUCTIONS:
-        - Create 5-8 slides maximum
-        - Include title slide, key points, and conclusion
-        - Maintain consistent design throughout
-        - Use speaker notes for additional context
-        - Include next steps/call-to-action slide
-        """
-    
-    else:
-        return base_instruction + "\n\nCreate according to best practices for this material type."
 
 # Database operations
 def save_materials_decision(state: MaterialsDecisionState) -> Command:
@@ -416,14 +344,26 @@ def trigger_content_generation(generation_queue: str) -> str:
     Output: Generated file paths and status
     """
     try:
-        queue = json.loads(generation_queue)
+        data = json.loads(generation_queue)
+        
+        # Handle both old format (just queue) and new format (queue + client_context)
+        if isinstance(data, dict) and "generation_queue" in data:
+            queue = data["generation_queue"]
+            client_context = data.get("client_context", "")
+        else:
+            # Backward compatibility: data is the queue itself
+            queue = data
+            client_context = ""
         
         print(f"\n📋 Generation Queue received ({len(queue)} items):")
         for i, item in enumerate(queue, 1):
-            print(f"   {i}. {item.get('title')} ({item.get('material_type')})")
+            print(f"   {i}. {item.get('title')} ({item.get('type')})")
+        
+        if client_context:
+            print(f"\n📝 Client Context: {client_context[:100]}...")
         
         # Convert materials queue to content agent format
-        input_state = convert_queue_to_agent_input(queue)
+        input_state = convert_queue_to_agent_input(queue, client_context)
         
         print(f"\n🔄 Converted input state:")
         print(f"   AI Image Prompts: {len(input_state['data_available'].get('ai_image_prompts', []))}")
@@ -449,38 +389,52 @@ def trigger_content_generation(generation_queue: str) -> str:
             "message": str(e)
         })
 
-def convert_queue_to_agent_input(queue: List[Dict]) -> Dict:
-    """Convert materials queue to content generation agent input format"""
+def convert_queue_to_agent_input(queue: List[Dict], client_context: str = "") -> Dict:
+    """Convert materials queue to content generation agent input format
+    
+    Args:
+        queue: List of material generation tasks
+        client_context: Client context string from the original request
+    """
     
     # Extract different material types
     chart_specs = []
     ai_image_prompts = []
     video_specs = []
     
+    
+    print(f"\n🔍 Converting {len(queue)} items from queue to agent input:")
+    
     for item in queue:
         # The queue uses "type" not "material_type"
         material_type = item.get("type")
         
-        print(f"   Processing: {item.get('title')} - Type: {material_type}")
+        print(f"\n   📌 Processing item:")
+        print(f"      Title: {item.get('title')}")
+        print(f"      Type: {material_type}")
+        print(f"      Description: {item.get('description', '')[:80]}...")
         
-        if material_type in ["chart", "slide"]:
+        if material_type in ["chart", "slide", "infographic"]:
             # Convert to chart specification
-            chart_specs.append({
+            # Infographics are data visualizations, not AI-generated images
+            chart_spec = {
                 "type": determine_chart_type(item),
                 "title": item.get("title"),
                 "data": extract_data_from_claims(item)
-            })
-            
-        elif material_type in ["infographic"]:
-            # Convert to AI image prompt
-            ai_image_prompts.append({
-                "prompt": generate_infographic_prompt(item),
-                "aspect_ratio": "16:9",
-                "filename": item.get("material_id")
-            })
+            }
+            chart_specs.append(chart_spec)
+            print(f"      ✓ Added to CHART_SPECS: {chart_spec['type']}")
             
         elif material_type in ["video_explainer", "presentation_deck"]:
             video_specs.append(item)
+            print(f"      ✓ Added to VIDEO_SPECS")
+        else:
+            print(f"      ⚠️  Unknown material type: {material_type}")
+    
+    print(f"\n📊 Conversion Summary:")
+    print(f"   Chart Specifications: {len(chart_specs)}")
+    print(f"   AI Image Prompts: {len(ai_image_prompts)}")
+    print(f"   Video Specifications: {len(video_specs)}")
     
     # Build content agent input
     return {
@@ -490,6 +444,7 @@ def convert_queue_to_agent_input(queue: List[Dict]) -> Dict:
             "sales_objectives": ["Create requested materials"]
         },
         "data_available": {
+            "client_context": client_context,
             "chart_specifications": chart_specs,
             "ai_image_prompts": ai_image_prompts,
             "video_specifications": video_specs
@@ -502,7 +457,21 @@ def determine_chart_type(material_spec: Dict) -> str:
     """Determine chart type from material specification"""
     title = material_spec.get("title", "").lower()
     description = material_spec.get("description", "").lower()
+    material_type = material_spec.get("type", "").lower()
     
+    # Check material type first
+    if material_type == "infographic":
+        # Infographics are visual data presentations - determine best chart type
+        if "market share" in title or "market share" in description or "share" in title:
+            return "market_share"
+        elif "comparison" in title or "compare" in description:
+            return "competitive_matrix"
+        elif "swot" in title or "strengths" in description:
+            return "swot_analysis"
+        else:
+            return "market_share"  # Default for infographics
+    
+    # Regular chart type detection
     if "market share" in title or "market share" in description:
         return "market_share"
     elif "swot" in title:
@@ -523,42 +492,6 @@ def extract_data_from_claims(material_spec: Dict) -> Dict:
         "companies": ["Company A", "Company B", "Company C"],
         "market_share": [35, 30, 25]
     }
-
-def generate_infographic_prompt(material_spec: Dict) -> str:
-    """Generate AI image prompt from infographic specification"""
-    title = material_spec.get("title", "")
-    description = material_spec.get("description", "")
-    requirements = material_spec.get("content_requirements", {})
-    
-    style = requirements.get("style", "professional")
-    color_scheme = requirements.get("color_scheme", "corporate")
-    
-    return f"{title}: {description}, {style} style, {color_scheme} colors, high quality infographic design"
-
-@tool
-def trigger_video_generation(material_specs: str) -> str:
-    """Trigger video generation agent with material specifications
-    
-    Input: JSON string with material specifications  
-    Output: Generation task ID or status
-    """
- 
-    return f"Video generation queued with task ID: {uuid.uuid4()}"
-
-@tool
-def get_client_preferences(client_id: str) -> str:
-    """Retrieve client presentation preferences from database
-    
-    Input: Client ID
-    Output: JSON string with client preferences
-    """
-    # Mock implementation - would query client preferences database
-    return json.dumps({
-        "preferred_style": "modern",
-        "color_scheme": "corporate_blue",
-        "presentation_length": "10-15_minutes",
-        "visual_preference": "data_heavy"
-    })
 
 
 def _render_text_image(path: Path, title: str, description: str, priority: str) -> None:
@@ -615,6 +548,7 @@ def trigger_generation_node(state: MaterialsDecisionState) -> Command:
     """Trigger content generation for approved materials"""
     
     generation_queue = state.get("generation_queue", [])
+    client_context = state.get("client_context", "")
     
     if not generation_queue:
         return Command(update={"status": "no_materials_to_generate"})
@@ -623,8 +557,12 @@ def trigger_generation_node(state: MaterialsDecisionState) -> Command:
     generation_status = "skipped"
 
     try:
-        # @tool returns a StructuredTool which must be invoked explicitly
-        result = trigger_content_generation.invoke(json.dumps(generation_queue))
+        # Pass both queue and client_context
+        payload = {
+            "generation_queue": generation_queue,
+            "client_context": client_context
+        }
+        result = trigger_content_generation.invoke(json.dumps(payload))
         result_data = json.loads(result)
         generation_status = result_data.get("status", "completed")
         generated_files = result_data.get("generated_files", [])

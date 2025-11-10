@@ -9,13 +9,67 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-# Use relative imports within the package
-from .content_state import ContentAgentState
-from .content_tools import content_generation_tools
+# Use relative imports within the package, with fallback for standalone execution
+
+from content_state import ContentAgentState
+from content_tools import content_generation_tools
+from ai_image_tool import generate_ai_image
 
 # LLM will be initialized in create_content_generation_agent
 llm = None
 llm_with_tools = None
+
+
+def generate_ai_image_node(state: ContentAgentState) -> ContentAgentState:
+    """
+    Generates AI images if ai_image_prompts are present in data_available
+    """
+    print("\n🎨 AI Image Generation Node...")
+    
+    data_available = state.get("data_available", {})
+    generated_files = state.get("generated_files", [])
+    
+    # Check ai_image_prompts
+    ai_image_prompts = data_available.get("ai_image_prompts", [])
+    if not ai_image_prompts or len(ai_image_prompts) == 0:
+        print("   ✗ No ai_image_prompts provided - skipping AI image generation")
+        if "ai_image_prompts" in data_available:
+            del data_available["ai_image_prompts"]
+    else:
+        print(f"   ✓ Found {len(ai_image_prompts)} ai_image_prompts - generating now...")
+        # Generate each AI image
+        for idx, prompt_data in enumerate(ai_image_prompts):
+            print(f"\n   📸 Generating AI image {idx + 1}/{len(ai_image_prompts)}...")
+            
+            # Convert prompt_data to JSON string (the tool expects a JSON string)
+            prompt_json = json.dumps(prompt_data)
+            
+            # Call the tool directly
+            result = generate_ai_image(prompt_json)
+            
+            # Extract file path from result
+            if "✅" in result or "generated_content/" in result:
+                # Parse the file path from the result message
+                import re
+                file_match = re.search(r'generated_content/[^\s]+\.png', result)
+                if file_match:
+                    file_path = file_match.group(0)
+                    generated_files.append(file_path)
+                    print(f"      ✓ Added to generated_files: {file_path}")
+                else:
+                    print(f"      ⚠️  Could not extract file path from result: {result[:100]}")
+            else:
+                print(f"      ❌ Generation failed: {result}")
+        
+        # Remove ai_image_prompts after processing so planning node doesn't try to generate them again
+        print(f"\n   ✓ Completed AI image generation, removing from data_available")
+        del data_available["ai_image_prompts"]
+    
+    return {
+        **state,
+        "data_available": data_available,
+        "generated_files": generated_files
+    }
 
 
 def planning_node(state: ContentAgentState) -> ContentAgentState:
@@ -29,16 +83,11 @@ def planning_node(state: ContentAgentState) -> ContentAgentState:
 
     # Check if we have pre-specified materials from materials agent
     chart_specs = data_available.get("chart_specifications", [])
-    ai_image_prompts = data_available.get("ai_image_prompts", [])
+    video_specs = data_available.get("video_specifications", [])
     
-    system_prompt = """You are a sales content generation specialist. 
+    system_prompt = f"""You are a sales content generation specialist. 
 
-If chart_specifications are provided, create those specific charts.
-If ai_image_prompts are provided, generate those images.
-If you have both data and flexibility, make decisions about the best visualizations.
-    
-Your job is to analyze the meeting context, specifications if provided, and available data, then create 
-a comprehensive set of visualizations for the sales meeting using the appropriate tools for each type of content.
+Your job is to analyze the meeting context and available data, then create visualizations for the sales meeting.
 
 Available tools:
 - generate_market_share_chart: For showing market share distribution (static PNG)
@@ -48,24 +97,15 @@ Available tools:
 - generate_financial_comparison: For comparing financial metrics (static PNG)
 - generate_video_presentation: For combining static images into a slideshow video
 - generate_animated_video: For creating an animated presentation with dynamic charts
-  (bars growing, lines drawing, smooth transitions) - RECOMMENDED for presentations
-- generate_ai_image: For creating custom AI-generated images from text prompts using Google Imagen-4
-  (photorealistic images, illustrations, marketing visuals, creative imagery)
 
-IMPORTANT: You must create BOTH:
-1. Data-driven visualizations (charts/videos) based on the available data
-2. AI-generated images if prompts are provided
 
-Guidelines:
-1. ALWAYS generate relevant data visualizations (charts, SWOT, etc.) based on available data
-2. If client_data exists, generate a SWOT analysis
-3. If industry_data exists, generate a market share chart
-4. For presentations: Create an animated video with all the charts
-5. If ai_image_prompts are provided, ALSO generate those AI images
-6. Call tools one at a time with properly formatted JSON data
-7. Think step by step and create a comprehensive presentation package
-
-Your goal is to create a complete set of materials, not just one type of content.
+General Guidelines:
+1. If chart_specifications are provided, create those specific charts
+2. If video_specifications are provided, create those specific videos
+3. If client_data exists, consider generating a SWOT analysis
+4. If industry_data exists, consider generating a market share chart
+5. Call tools one at a time with properly formatted JSON data
+6. Only use the tools appropriate for the data you have been given
 """
     
     human_prompt = f"""
@@ -75,8 +115,7 @@ Meeting Context:
 Available Data:
 {json.dumps(data_available, indent=2)}
 
-What visualizations should we create? Call the appropriate tools with the data.
-If ai_image_prompts are provided in the data, use the generate_ai_image tool to create those images.
+Generate the visualizations based on the specifications and data provided above.
 """
     
     messages = [
@@ -175,13 +214,17 @@ def create_content_generation_agent():
     workflow = StateGraph(ContentAgentState)
     
     # Add nodes
+    workflow.add_node("generate_ai_images", generate_ai_image_node)
     workflow.add_node("planning", planning_node)
     workflow.add_node("tools", ToolNode(content_generation_tools))
     workflow.add_node("finalize", finalize_node)
     
     # Define flow
-    workflow.set_entry_point("planning")
+    workflow.set_entry_point("generate_ai_images")
     
+    # After validation, always go to planning
+    workflow.add_edge("generate_ai_images", "planning")
+
     # Conditional routing after planning
     workflow.add_conditional_edges(
         "planning",
@@ -233,19 +276,13 @@ if __name__ == "__main__":
             "has_historical_data": False,
             "ai_image_prompts": [
                 {
-                    "prompt": "modern technology office with diverse team collaborating around a conference table, professional corporate environment, natural lighting, high quality",
-                    "aspect_ratio": "16:9",
-                    "filename": "team_collaboration"
+                    "prompt": "modern technology office with diverse team collaborating around a conference table, professional corporate environment, natural lighting, high quality"
                 },
                 {
-                    "prompt": "futuristic digital transformation concept with abstract technology network, glowing connections, blue and purple colors, professional business style, 3D illustration",
-                    "aspect_ratio": "16:9",
-                    "filename": "digital_transformation"
+                    "prompt": "futuristic digital transformation concept with abstract technology network, glowing connections, blue and purple colors, professional business style, 3D illustration"
                 },
                 {
-                    "prompt": "professional business handshake in modern office building lobby, corporate photography style, confident executives, bright natural lighting, glass windows",
-                    "aspect_ratio": "16:9",
-                    "filename": "business_partnership"
+                    "prompt": "professional business handshake in modern office building lobby, corporate photography style, confident executives, bright natural lighting, glass windows"
                 }
             ]
         },

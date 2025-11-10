@@ -230,6 +230,7 @@ if st.session_state.workflow_complete:
     ):
         # --- Pass to materials agent ---
         with st.spinner("Passing selected claims to Materials Agent..."):
+            # Use relative path from current page
             st.switch_page("pages/3_Marketing_Decision.py")
 
 # Footer
