@@ -40,8 +40,8 @@ class AnimatedVideoGenerator:
         """
         sections = spec.get('sections', [])
         title = spec.get('title', 'Presentation')
-    client_name = spec.get('client_name', 'client')
-    client_slug = client_name.replace(' ', '_')
+        client_name = spec.get('client_name', 'client')
+        client_slug = client_name.replace(' ', '_')
         duration_per_section = spec.get('duration_per_section', 5)
         
         clips = []
@@ -73,7 +73,7 @@ class AnimatedVideoGenerator:
         
         # Generate output filename
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = self.output_dir / f"{client_slug}_animated_presentation_{timestamp}.mp4"
+        filename = self.output_dir / f"{client_slug}_animated_presentation_{timestamp}.mp4"
         
         # Write video file
         print("   Rendering final video (this may take a minute)...")
