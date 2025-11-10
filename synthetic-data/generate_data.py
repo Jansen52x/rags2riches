@@ -89,12 +89,47 @@ def main(num_records=75, output_dir='output', generate_images=True, generate_pdf
         print(f"Generating {docs_per_company[0]}-{docs_per_company[1]} diverse documents per company...")
         print("="*80)
         
+        import time
+        start_time = time.time()
         doc_count = 0
+        companies_processed = 0
+        total_companies = len(df_synthetic)
+        
+        # Count seed companies to estimate time
+        seed_companies = sum(1 for _, row in df_synthetic.iterrows() if row['client_data'].get('is_seed', False))
+        synthetic_companies = total_companies - seed_companies
+        
+        # Estimate API calls: ~7 docs avg × seed companies + 1 industry overview per seed company
+        estimated_api_calls = seed_companies * 8  # ~7 docs + 1 industry
+        estimated_minutes = (estimated_api_calls * 4) / 60  # 4 seconds per call
+        
+        print(f"\n📊 Generation Plan:")
+        print(f"   • {seed_companies} real companies (with Gemini + Google Search)")
+        print(f"   • {synthetic_companies} synthetic companies (with Faker)")
+        print(f"   • Estimated API calls: ~{estimated_api_calls}")
+        print(f"   • Estimated time: ~{estimated_minutes:.1f} minutes")
+        print(f"   • Rate limit: 4 seconds between Gemini calls (15 RPM max)")
+        print()
+        
         for idx, row in df_synthetic.iterrows():
             client_data = row['client_data']
+            company_name = client_data.get('company_name', 'Unknown')
             
             # Use Gemini for seed companies (real companies), Faker for synthetic ones
             is_seed_company = client_data.get('is_seed', False)
+            
+            # Progress indicator
+            elapsed = time.time() - start_time
+            if companies_processed > 0:
+                avg_time_per_company = elapsed / companies_processed
+                remaining_companies = total_companies - companies_processed
+                eta_seconds = avg_time_per_company * remaining_companies
+                eta_minutes = eta_seconds / 60
+                print(f"\n[{companies_processed}/{total_companies}] Processing: {company_name}")
+                print(f"   ⏱️  Elapsed: {elapsed/60:.1f}m | ETA: {eta_minutes:.1f}m | Type: {'🌐 Real (Gemini)' if is_seed_company else '🎲 Synthetic (Faker)'}")
+            else:
+                print(f"\n[{companies_processed}/{total_companies}] Processing: {company_name} ({'🌐 Real' if is_seed_company else '🎲 Synthetic'})")
+            
             documents = generate_all_documents_for_company(
                 client_data, 
                 docs_per_company, 
@@ -103,8 +138,7 @@ def main(num_records=75, output_dir='output', generate_images=True, generate_pdf
             
             # If documents is None, Gemini failed for a seed company - skip it
             if documents is None:
-                company_name = client_data.get('company_name', 'Unknown')
-                print(f"  ⏭️  Skipped real company '{company_name}' (Gemini limit reached)")
+                print(f"   ❌ Skipped (Gemini API limit reached)")
                 continue
             
             for doc_idx, doc in enumerate(documents):
@@ -113,10 +147,14 @@ def main(num_records=75, output_dir='output', generate_images=True, generate_pdf
                 all_documents.append(doc)
                 doc_count += 1
             
-            if (idx + 1) % 10 == 0:
-                print(f"  ✓ Generated documents for {idx + 1}/{len(df_synthetic)} companies ({doc_count} total docs)")
+            companies_processed += 1
+            print(f"   ✅ Generated {len(documents)} documents (Total: {doc_count} docs)")
         
-        print(f"✓ Generated {doc_count} documents across {len(df_synthetic)} companies")
+        total_time = time.time() - start_time
+        print(f"\n{'='*80}")
+        print(f"✓ Generated {doc_count} documents for {companies_processed}/{total_companies} companies")
+        print(f"⏱️  Total time: {total_time/60:.1f} minutes")
+        print(f"{'='*80}")
         
         # Generate partnership documents (only between synthetic companies, not real ones)
         if generate_partnerships:
@@ -259,7 +297,7 @@ def main(num_records=75, output_dir='output', generate_images=True, generate_pdf
 
 if __name__ == "__main__":
     # Load configuration from .env file (with fallback defaults)
-    NUM_RECORDS = int(os.environ.get('NUM_COMPANIES', 75))
+    NUM_RECORDS = 31  # Generate all real companies from seed CSV
     OUTPUT_DIR = 'output'  # Output directory relative to synthetic-data folder
     GENERATE_IMAGES = os.environ.get('GENERATE_IMAGES', 'true').lower() == 'true'
     GENERATE_PDFS = os.environ.get('GENERATE_PDFS', 'true').lower() == 'true'

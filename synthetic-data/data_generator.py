@@ -228,28 +228,67 @@ def reset_company_counter():
     _gemini_failed_for_seed = False
 
 
-def generate_industry_overview_with_gemini(industry):
+def generate_industry_overview_with_gemini(industry, is_seed_company=False):
     """
-    Generates a realistic industry overview using Gemini AI.
+    Generates a realistic industry overview using Gemini AI with web search.
+    For real companies: Auto-retry on rate limits.
+    For synthetic companies: Fallback to Faker on errors.
     
     Args:
         industry (str): The industry name to generate overview for
+        is_seed_company (bool): If True, auto-retry on rate limits
         
     Returns:
         str: A synthetic industry overview text
     """
-    try:
-        prompt = f"""Write a brief 3-sentence industry overview for the {industry} sector.
-Include current trends, key challenges, and future outlook.
-Make it sound professional and realistic. Return only the text, no formatting."""
-        
-        response = gemini_model.generate_content(prompt)
-        time.sleep(0.5)  # Rate limiting
-        return response.text.strip()
-        
-    except Exception as e:
-        print(f"⚠️  Gemini API error: {e}. Using Faker fallback for industry overview.")
-        return generate_industry_overview_with_faker(industry)
+    max_retries = 5 if is_seed_company else 0
+    retry_count = 0
+    
+    while retry_count <= max_retries:
+        try:
+            prompt = f"""Search the web for current information about the {industry} sector.
+Write a brief 3-sentence industry overview that includes:
+1. Current market trends and size
+2. Key challenges facing the industry
+3. Future outlook and growth projections
+
+Use real data from recent sources. Make it professional and factual.
+Return only the text, no formatting."""
+            
+            response = gemini_model.generate_content(prompt)
+            time.sleep(4.0)  # Rate limiting - 4 seconds to respect 15 RPM
+            print(f"      🔍 Industry research complete (web-sourced)")
+            return response.text.strip()
+            
+        except Exception as e:
+            error_msg = str(e)
+            
+            # Check if it's a rate limit error (429)
+            if "429" in error_msg or "Resource exhausted" in error_msg:
+                if is_seed_company and retry_count < max_retries:
+                    wait_time = 60 * (2 ** retry_count)  # 60s, 120s, 240s, 480s, 960s
+                    retry_count += 1
+                    print(f"      ⏳ Rate limit hit on industry overview. Waiting {wait_time}s before retry {retry_count}/{max_retries}...")
+                    time.sleep(wait_time)
+                    continue
+                elif is_seed_company:
+                    print(f"      ❌ Failed after {max_retries} retries: {e}")
+                    raise
+                else:
+                    print(f"      ⚠️  Gemini error (using Faker fallback): {e}")
+                    return generate_industry_overview_with_faker(industry)
+            else:
+                # Non-rate-limit error
+                if is_seed_company:
+                    raise
+                else:
+                    print(f"      ⚠️  Gemini error (using Faker fallback): {e}")
+                    return generate_industry_overview_with_faker(industry)
+    
+    # Should never reach here
+    if is_seed_company:
+        raise Exception(f"Failed after {max_retries} retries")
+    return generate_industry_overview_with_faker(industry)
 
 
 def generate_industry_overview_with_faker(industry):
@@ -270,19 +309,21 @@ def generate_industry_overview_with_faker(industry):
     return overview
 
 
-def generate_industry_overview(industry):
+def generate_industry_overview(industry, is_seed_company=False):
     """
     Generates a synthetic industry overview.
     Uses Gemini AI if available, otherwise falls back to Faker.
+    For real companies: Auto-retry on rate limits.
     
     Args:
         industry (str): The industry name to generate overview for
+        is_seed_company (bool): If True, auto-retry on rate limits
         
     Returns:
         str: A synthetic industry overview text
     """
     if gemini_model is not None:
-        return generate_industry_overview_with_gemini(industry)
+        return generate_industry_overview_with_gemini(industry, is_seed_company)
     else:
         return generate_industry_overview_with_faker(industry)
 
@@ -311,7 +352,8 @@ def generate_synthetic_dataset(num_records=75):
     
     for i in range(num_records):
         client_data = generate_client_record()
-        industry_overview = generate_industry_overview(client_data['industry'])
+        is_seed = client_data.get('is_seed', False)
+        industry_overview = generate_industry_overview(client_data['industry'], is_seed_company=is_seed)
         synthetic_data.append({
             'client_data': client_data,
             'industry_overview': industry_overview

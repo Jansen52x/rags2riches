@@ -136,15 +136,13 @@ if 'rag_results' in st.session_state:
         st.markdown("")  # Spacing
 
         # Only show fact-check option if user wants to extract claims
-        with st.expander("⚙️ Extract & Verify Claims"):
-            st.markdown("**Extract specific claims from this answer to fact-check:**")
+        with st.expander("⚙️ Verify Claims"):
 
             # Let user manually select/edit what to fact-check
-            claim_input = st.text_area(
-                "Edit or select a specific claim to verify",
+            claim_input = st.text_input(
+                "Enter your claim to verify",
                 value="",
                 placeholder="e.g., 'Williams-Frederick generated $50M revenue in 2023' or select a specific factual statement from the answer above",
-                height=100,
                 help="Extract a specific factual claim from the RAG answer that you want to verify with external sources"
             )
 

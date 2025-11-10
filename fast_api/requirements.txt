@@ -21,7 +21,6 @@ openai
 chromadb
 sentence_transformers
 transformers
-torch
 # Materials + Content Generation Dependencies
 plotly==6.1.1
 kaleido

@@ -14,6 +14,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 import textwrap
 import traceback
+import os
 
 # Use proper package import - no sys.path hacking needed!
 from .content_generation.content_generation_agent import create_content_generation_agent
@@ -22,6 +23,10 @@ from .content_generation.content_generation_agent import create_content_generati
 GENERATED_CONTENT_DIR = Path(__file__).resolve().parent.parent / "generated_content"
 FALLBACK_IMAGE_DIR = GENERATED_CONTENT_DIR / "images"
 FALLBACK_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+
+EVAL_MODE_ENABLED = os.getenv("MATERIALS_AGENT_MODE", "").lower() in {"heuristic", "deterministic"}
+SKIP_DB_SAVE = os.getenv("MATERIALS_AGENT_SKIP_DB", "").lower() in {"1", "true", "yes", "on"}
+SKIP_GENERATION = os.getenv("MATERIALS_AGENT_SKIP_GENERATION", "").lower() in {"1", "true", "yes", "on"}
 
 
 # State definitions
@@ -151,8 +156,13 @@ def analyze_claims_for_materials(state: MaterialsDecisionState) -> Command:
     
     verified_claims = state["verified_claims"]
     client_context = state["client_context"]
-    
-    prompt = f"""
+    recommendations: List[Dict]
+
+    if EVAL_MODE_ENABLED:
+        print("MATERIALS_AGENT_MODE=heuristic detected; using deterministic recommendations")
+        recommendations = _heuristic_recommendations(verified_claims, client_context)
+    else:
+        prompt = f"""
     You are a presentation materials strategist helping a salesperson create compelling materials for a client meeting.
     
     Based on the verified claims below, recommend the most effective presentation materials to create.
@@ -203,22 +213,22 @@ def analyze_claims_for_materials(state: MaterialsDecisionState) -> Command:
     
     Recommend 3-6 materials maximum. Focus on quality and impact over quantity.
     """
+        
+        llm = ChatOllama(model="qwen3:0.6b", temperature=0.3)
+        response = llm.invoke(prompt).content
     
-    llm = ChatOllama(model="qwen3:0.6b", temperature=0.3)
-    response = llm.invoke(prompt).content
+        # Try robust parsing first
+        recommendations = _attempt_parse_recommendations(response)
 
-    # Try robust parsing first
-    recommendations = _attempt_parse_recommendations(response)
+        # Add IDs if any
+        for rec in recommendations:
+            rec.setdefault("material_id", str(uuid.uuid4()))
 
-    # Add IDs if any
-    for rec in recommendations:
-        rec.setdefault("material_id", str(uuid.uuid4()))
+        # If still empty, fall back to deterministic heuristics
+        if not recommendations:
+            print("Error parsing LLM response, using fallback")
+            recommendations = _heuristic_recommendations(verified_claims, client_context)
 
-    # If still empty, fall back to deterministic heuristics
-    if not recommendations:
-        print("Error parsing LLM response, using fallback")
-        recommendations = _heuristic_recommendations(verified_claims, client_context)
-    
     print(f"Generated {len(recommendations)} material recommendations")
     
     return Command(
@@ -306,6 +316,10 @@ def save_materials_decision(state: MaterialsDecisionState) -> Command:
     salesperson_id = state["salesperson_id"]
     recommendations = state["material_recommendations"]
     selected_materials = state["selected_materials"]
+
+    if SKIP_DB_SAVE:
+        print("Skipping materials decision database save (MATERIALS_AGENT_SKIP_DB enabled)")
+        return Command(update={})
     
     try:
         with psycopg.connect("dbname=claim_verifications user=fact-checker password=fact-checker host=localhost port=5432") as conn:
@@ -552,6 +566,10 @@ def trigger_generation_node(state: MaterialsDecisionState) -> Command:
     
     if not generation_queue:
         return Command(update={"status": "no_materials_to_generate"})
+    
+    if SKIP_GENERATION:
+        print("Skipping content generation (MATERIALS_AGENT_SKIP_GENERATION enabled)")
+        return Command(update={"generation_status": "skipped (evaluation)", "generated_files": []})
     
     generated_files: List[str] = []
     generation_status = "skipped"

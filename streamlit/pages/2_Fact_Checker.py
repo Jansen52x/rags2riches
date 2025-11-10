@@ -160,6 +160,23 @@ if 'claim' in st.session_state:
                             return 0.1
                         return 0.5
 
+                    def _should_pass_by_default(verdict: str) -> bool:
+                        verdict_upper = (verdict or "").upper()
+                        return verdict_upper in {"TRUE", "SUPPORTED", "ACCURATE"}
+
+                    raw_flag = claim_result.get("pass_to_materials_agent")
+                    if isinstance(raw_flag, str):
+                        normalized_flag = raw_flag.strip().lower()
+                        verdict_flag = normalized_flag in {"true", "yes", "y", "1", "pass"}
+                    elif raw_flag is None:
+                        verdict_flag = _should_pass_by_default(claim_result.get("overall_verdict"))
+                    else:
+                        verdict_flag = bool(raw_flag)
+
+                    if not verdict_flag and _should_pass_by_default(claim_result.get("overall_verdict")):
+                        # Heuristic: treat clearly true verdicts as passable even if the LLM omitted the flag
+                        verdict_flag = True
+
                     if verdict_flag:
                         verified_entry = {
                             "claim_id": claim_result.get("claim_id") or f"claim_{len(current_claims) + 1:03d}",
