@@ -314,7 +314,8 @@ class ContentGenerator:
     
     def _get_filename(self, content_type: str, spec: Dict) -> Path:
         """Generate unique filename for output"""
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        # Include microseconds to ensure uniqueness even when generating multiple charts in same second
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         client_name = spec.get('client_name', 'client').replace(' ', '_')
         target_dir = self.output_dir / "images"
         target_dir.mkdir(parents=True, exist_ok=True)
@@ -451,7 +452,16 @@ class ContentGenerator:
         Returns:
             Path to generated MP4 file
         """
-        from animated_video_generator import AnimatedVideoGenerator
+        # Use relative import with try/except for Docker compatibility
+        try:
+            from .animated_video_generator import AnimatedVideoGenerator
+        except ImportError:
+            from animated_video_generator import AnimatedVideoGenerator
         
+        print(f"   DEBUG: Creating AnimatedVideoGenerator with output_dir={self.output_dir}")
         video_gen = AnimatedVideoGenerator(output_dir=str(self.output_dir))
-        return video_gen.create_presentation_video(spec)
+        print(f"   DEBUG: Calling create_presentation_video() with spec...")
+        result = video_gen.create_presentation_video(spec)
+        print(f"   DEBUG: create_presentation_video() returned: {result}")
+        return result
+

@@ -10,6 +10,15 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 import logging
 from typing import List, Dict, Any, Optional
+from dotenv import load_dotenv
+
+# Load environment variables from .env or secrets.env
+load_dotenv()  # Loads .env by default
+# Also try to load secrets.env if it exists
+secrets_path = Path(__file__).resolve().parent.parent / "secrets.env"
+if secrets_path.exists():
+    load_dotenv(secrets_path)
+
 from config import settings
 from rag_services.embedding_service import EmbeddingService
 from rag_services.llm_service import LLMService
@@ -293,4 +302,4 @@ async def generate_materials_mock(request: MaterialsRequest):
 
 # --- (Optional) Run for testing ---
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8001)
