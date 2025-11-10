@@ -349,60 +349,7 @@ def save_materials_decision(state: MaterialsDecisionState) -> Command:
     except Exception as e:
         print(f"Error saving materials decision: {e}")
         return Command(update={"status": "save_failed"})
-
-@tool
-def trigger_content_generation(generation_queue: str) -> str:
-    """Trigger content generation agent with material specifications
     
-    Input: JSON string with generation queue containing material specs
-    Output: Generated file paths and status
-    """
-    try:
-        data = json.loads(generation_queue)
-        
-        # Handle both old format (just queue) and new format (queue + client_context)
-        if isinstance(data, dict) and "generation_queue" in data:
-            queue = data["generation_queue"]
-            client_context = data.get("client_context", "")
-        else:
-            # Backward compatibility: data is the queue itself
-            queue = data
-            client_context = ""
-        
-        print(f"\n📋 Generation Queue received ({len(queue)} items):")
-        for i, item in enumerate(queue, 1):
-            print(f"   {i}. {item.get('title')} ({item.get('type')})")
-        
-        if client_context:
-            print(f"\n📝 Client Context: {client_context[:100]}...")
-        
-        # Convert materials queue to content agent format
-        input_state = convert_queue_to_agent_input(queue, client_context)
-        
-        print(f"\n🔄 Converted input state:")
-        print(f"   AI Image Prompts: {len(input_state['data_available'].get('ai_image_prompts', []))}")
-        print(f"   Chart Specs: {len(input_state['data_available'].get('chart_specifications', []))}")
-        print(json.dumps(input_state, indent=2))
-        
-        # Create and invoke agent
-        agent = create_content_generation_agent()
-        result = agent.invoke(input_state)
-        
-        return json.dumps({
-            "status": "success",
-            "generated_files": result.get("generated_files", []),
-            "generation_count": len(result.get("generated_files", []))
-        })
-        
-    except Exception as e:
-        print(f"\n❌ Error in trigger_content_generation: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return json.dumps({
-            "status": "error",
-            "message": str(e)
-        })
-
 def convert_queue_to_agent_input(queue: List[Dict], client_context: str = "") -> Dict:
     """Convert materials queue to content generation agent input format
     
@@ -467,6 +414,60 @@ def convert_queue_to_agent_input(queue: List[Dict], client_context: str = "") ->
         "generated_files": [],
         "errors": []
     }
+
+@tool
+def trigger_content_generation(generation_queue: str) -> str:
+    """Trigger content generation agent with material specifications
+    
+    Input: JSON string with generation queue containing material specs
+    Output: Generated file paths and status
+    """
+    try:
+        data = json.loads(generation_queue)
+        
+        # Handle both old format (just queue) and new format (queue + client_context)
+        if isinstance(data, dict) and "generation_queue" in data:
+            queue = data["generation_queue"]
+            client_context = data.get("client_context", "")
+        else:
+            # Backward compatibility: data is the queue itself
+            queue = data
+            client_context = ""
+        
+        print(f"\n📋 Generation Queue received ({len(queue)} items):")
+        for i, item in enumerate(queue, 1):
+            print(f"   {i}. {item.get('title')} ({item.get('type')})")
+        
+        if client_context:
+            print(f"\n📝 Client Context: {client_context[:100]}...")
+        
+        # Convert materials queue to content agent format
+        input_state = convert_queue_to_agent_input(queue, client_context)
+        
+        print(f"\n🔄 Converted input state:")
+        print(f"   AI Image Prompts: {len(input_state['data_available'].get('ai_image_prompts', []))}")
+        print(f"   Chart Specs: {len(input_state['data_available'].get('chart_specifications', []))}")
+        print(json.dumps(input_state, indent=2))
+        
+        # Create and invoke agent
+        agent = create_content_generation_agent()
+        result = agent.invoke(input_state)
+        
+        return json.dumps({
+            "status": "success",
+            "generated_files": result.get("generated_files", []),
+            "generation_count": len(result.get("generated_files", []))
+        })
+        
+    except Exception as e:
+        print(f"\n❌ Error in trigger_content_generation: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return json.dumps({
+            "status": "error",
+            "message": str(e)
+        })
+
 def determine_chart_type(material_spec: Dict) -> str:
     """Determine chart type from material specification"""
     title = material_spec.get("title", "").lower()

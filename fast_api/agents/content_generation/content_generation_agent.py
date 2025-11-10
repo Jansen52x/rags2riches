@@ -11,9 +11,9 @@ load_dotenv()
 
 # Use relative imports within the package, with fallback for standalone execution
 
-from content_state import ContentAgentState
-from content_tools import content_generation_tools
-from ai_image_tool import generate_ai_image
+from .content_state import ContentAgentState
+from .content_tools import content_generation_tools
+from .ai_image_tool import generate_ai_image
 
 # LLM will be initialized in create_content_generation_agent
 llm = None
@@ -95,17 +95,30 @@ Available tools:
 - generate_competitive_matrix: For 2x2 strategic positioning (static PNG)
 - generate_swot_analysis: For strengths/weaknesses/opportunities/threats (static PNG)
 - generate_financial_comparison: For comparing financial metrics (static PNG)
-- generate_video_presentation: For combining static images into a slideshow video
 - generate_animated_video: For creating an animated presentation with dynamic charts
 
 
-General Guidelines:
-1. If chart_specifications are provided, create those specific charts
-2. If video_specifications are provided, create those specific videos
-3. If client_data exists, consider generating a SWOT analysis
-4. If industry_data exists, consider generating a market share chart
-5. Call tools one at a time with properly formatted JSON data
-6. Only use the tools appropriate for the data you have been given
+CRITICAL INSTRUCTIONS:
+1. **REQUIRED**: If {chart_specs} are provided, YOU MUST generate ALL charts specified.
+   - chart_specifications: {len(chart_specs)} charts to generate
+   - For each chart specification, call the appropriate tool based on the "type" field:
+     * type="market_share" → use generate_market_share_chart
+     * type="growth_trend" → use generate_growth_trend_chart
+     * type="competitive_matrix" → use generate_competitive_matrix
+   - Use the exact data provided in the chart specification
+   
+2. **REQUIRED**: If {video_specs} are provided, YOU MUST generate ALL videos specified.
+   - video_specifications: {len(video_specs)} videos to generate
+   - For each video specification, call generate_animated_video with the full specification
+   
+3. If client_data exists (without chart_specifications), consider generating a SWOT analysis
+
+4. Call tools one at a time with properly formatted JSON data
+
+5. Only use the tools appropriate for the data you have been given
+
+EXAMPLE:
+If you see chart_specifications with type="market_share", you MUST call generate_market_share_chart with the provided data.
 """
     
     human_prompt = f"""
@@ -115,7 +128,10 @@ Meeting Context:
 Available Data:
 {json.dumps(data_available, indent=2)}
 
-Generate the visualizations based on the specifications and data provided above.
+INSTRUCTIONS:
+- Generate ALL chart_specifications provided above ({len(chart_specs)} charts)
+- Generate ALL video_specifications provided above ({len(video_specs)} videos)
+- Use the exact data and titles from the specifications
 """
     
     messages = [
@@ -141,10 +157,22 @@ def route_after_planning(state: ContentAgentState) -> Literal["tools", "finalize
     messages = state["messages"]
     last_message = messages[-1]
     
+    # Debug: Print what the LLM returned
+    print(f"\n🔍 DEBUG - Routing Decision:")
+    print(f"   Message type: {type(last_message)}")
+    print(f"   Has tool_calls attr: {hasattr(last_message, 'tool_calls')}")
+    if hasattr(last_message, "tool_calls"):
+        print(f"   Tool calls: {last_message.tool_calls}")
+        print(f"   Number of tool calls: {len(last_message.tool_calls) if last_message.tool_calls else 0}")
+    if hasattr(last_message, "content"):
+        print(f"   Content preview: {str(last_message.content)[:200]}")
+    
     # Check if the agent wants to use tools
     if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+        print(f"   → Routing to: TOOLS")
         return "tools"
     
+    print(f"   → Routing to: FINALIZE (no tool calls)")
     return "finalize"
 
 

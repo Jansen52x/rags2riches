@@ -6,7 +6,7 @@ import requests
 from pathlib import Path
 
 # Use relative import within package
-from content_generator import ContentGenerator
+from .content_generator import ContentGenerator
 
 
 STATIC_ROOT = Path(__file__).resolve().parents[2] / "generated_content"
@@ -48,7 +48,11 @@ def generate_market_share_chart(data: str) -> str:
         Path to generated image file
     """
     try:
+        print(f"\n📊 generate_market_share_chart called")
+        print(f"   Input data: {data[:200]}...")
+        
         data_dict = json.loads(data)
+        print(f"   Parsed JSON successfully")
         
         spec = {
             "type": "market_share",
@@ -59,12 +63,20 @@ def generate_market_share_chart(data: str) -> str:
                 "market_share": data_dict["market_share"]
             }
         }
+        print(f"   Created spec: {spec}")
 
         file_path = Path(generator.generate(spec))
-        return f"✅ Generated market share chart: {_to_public_path(file_path)}"
+        print(f"   ✓ Generated file: {file_path}")
+        result = f"✅ Generated market share chart: {_to_public_path(file_path)}"
+        print(f"   Returning: {result}")
+        return result
         
     except Exception as e:
-        return f"❌ Error generating market share chart: {str(e)}"
+        error_msg = f"❌ Error generating market share chart: {str(e)}"
+        print(f"   {error_msg}")
+        import traceback
+        traceback.print_exc()
+        return error_msg
 
 
 @tool
@@ -264,7 +276,11 @@ def generate_animated_video(data: str) -> str:
         Path to generated animated MP4 video file
     """
     try:
+        print(f"\n🎬 generate_animated_video called")
+        print(f"   Input data: {data[:200]}...")
+        
         data_dict = json.loads(data)
+        print(f"   Parsed JSON successfully")
         
         spec = {
             "type": "animated_video",
@@ -273,12 +289,22 @@ def generate_animated_video(data: str) -> str:
             "sections": data_dict.get("sections", []),
             "duration_per_section": data_dict.get("duration_per_section", 5)
         }
+        
+        print(f"   Created spec with {len(spec['sections'])} sections")
+        print(f"   Calling generator.generate()...")
 
         file_path = Path(generator.generate(spec))
-        return f"✅ Generated animated video presentation: {_to_public_path(file_path)}"
+        print(f"   ✓ Generated file: {file_path}")
+        result = f"✅ Generated animated video presentation: {_to_public_path(file_path)}"
+        print(f"   Returning: {result}")
+        return result
         
     except Exception as e:
-        return f"❌ Error generating animated video: {str(e)}"
+        error_msg = f"❌ Error generating animated video: {str(e)}"
+        print(f"   {error_msg}")
+        import traceback
+        traceback.print_exc()
+        return error_msg
 
 
 # List of all available tools

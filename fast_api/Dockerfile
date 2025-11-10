@@ -4,14 +4,20 @@ FROM python:3.11-slim
 # Set the working directory inside the container
 WORKDIR /app
 
-# Install system dependencies for MoviePy and image processing
+# Install system dependencies for MoviePy, image processing, and Chromium for Kaleido
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     libsm6 \
     libxext6 \
     libxrender-dev \
     libgomp1 \
+    chromium \
+    chromium-driver \
     && rm -rf /var/lib/apt/lists/*
+
+# Set Chrome path for Kaleido (Chromium binary location)
+ENV CHROME_BIN=/usr/bin/chromium
+ENV CHROMIUM_PATH=/usr/bin/chromium
 
 # Copy *only* the requirements file first for Docker caching
 COPY requirements.txt .

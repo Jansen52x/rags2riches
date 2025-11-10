@@ -6,8 +6,10 @@ import requests
 from pathlib import Path
 
 
+# Set output to /app/generated_content/ai_images (maps to fast_api/generated_content/ai_images)
 STATIC_ROOT = Path(__file__).resolve().parents[2] / "generated_content"
 STATIC_ROOT.mkdir(parents=True, exist_ok=True)
+
 # Directory for AI generated imagery served via FastAPI static mount
 AI_IMAGE_DIR = STATIC_ROOT / "ai_images"
 AI_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
