@@ -589,6 +589,125 @@ Write a brief memo with key points and action items. Keep it professional and co
     }
 
 
+def generate_company_profile(client_data, use_gemini=True):
+    """
+    Generates a comprehensive company profile/overview document.
+    
+    CRITICAL: This function ALWAYS uses Gemini (no Faker fallback).
+    If Gemini fails, it will retry with exponential backoff.
+    
+    Args:
+        client_data (dict): Company information
+        use_gemini (bool): Must be True (defaults to True, no Faker option)
+        
+    Returns:
+        dict: Company profile document
+        
+    Raises:
+        Exception: If Gemini fails after all retries
+    """
+    company_name = client_data.get('company_name', 'Company')
+    industry = client_data.get('industry', 'Technology')
+    contact_email = client_data.get('contact_email', 'info@company.com')
+    phone = client_data.get('phone', '+1-800-000-0000')
+    domain = client_data.get('domain', 'company.com')
+    
+    # NO FAKER FALLBACK - Company profiles MUST use Gemini web search
+    if gemini_model is None:
+        raise Exception(f"Gemini API is required for company profiles but is not available. Cannot generate profile for {company_name}.")
+    
+    # Construct detailed prompt for web-based research
+    prompt = f"""Use web search to research {company_name} and create a comprehensive, accurate company profile.
+
+IMPORTANT: Search the web for REAL, CURRENT information about {company_name}. Do NOT make up or hallucinate any facts.
+
+Research and include ACCURATE, VERIFIABLE information about:
+
+1. **Basic Information:**
+   - Founded year (exact year from web search)
+   - Founders (real founder names)
+   - Current CEO (actual current CEO name - verify this is up to date)
+   - Headquarters location (city, state/country)
+   - Number of employees (current estimate from recent sources)
+   - Website: {domain}
+   - Contact: {contact_email} | {phone}
+
+2. **Company Overview:**
+   - What the company does (2-3 sentences based on their actual business model)
+   - Company mission or vision statement (official statement if available)
+   - Brief history highlights (2-3 major milestones or turning points)
+
+3. **Key Products and Services:**
+   - List 5-8 major products or service lines they ACTUALLY offer
+   - Include flagship products by their real names
+   - Cover different business segments if the company has multiple divisions
+   - Be specific (e.g., "Azure Cloud Platform" not just "cloud services")
+
+4. **Leadership Team:**
+   - Current CEO with full name (verify current as of 2024-2025)
+   - Other C-level executives if publicly known (CFO, CTO, COO, etc.)
+   - Board chair if notable
+   - Use real names from recent sources
+
+5. **Market Position:**
+   - Market capitalization or valuation (realistic recent estimate)
+   - Main competitors (3-5 actual competitor names)
+   - Industry standing (market share, ranking, or position)
+   - Geographic presence (countries/regions where they operate)
+
+6. **Recent Achievements (2023-2025):**
+   - Notable awards, recognitions, or milestones
+   - Recent strategic initiatives, acquisitions, or partnerships
+   - Major product launches or announcements
+
+Format as a clean, professional company profile document (350-450 words). Use markdown formatting with clear headers (##). 
+
+CRITICAL: Base EVERYTHING on {company_name}'s actual, real-world information from web search. Do not invent or approximate any facts."""
+
+    # ALWAYS use Gemini with auto-retry (treat all companies as seed companies for profiles)
+    max_retries = 5
+    retry_count = 0
+    
+    while retry_count <= max_retries:
+        try:
+            # Generate content with Gemini
+            response = gemini_model.generate_content(prompt)
+            time.sleep(4.0)  # Rate limit delay (60s / 15 = 4s per request)
+            content = response.text.strip()
+            
+            # Success! Return the profile
+            return {
+                'document_type': 'company_profile',
+                'title': f'{company_name} - Company Profile',
+                'company_name': company_name,
+                'content': content
+            }
+            
+        except Exception as e:
+            error_msg = str(e)
+            
+            # Check if it's a rate limit error (429)
+            if "429" in error_msg or "Resource exhausted" in error_msg or "quota" in error_msg.lower():
+                if retry_count < max_retries:
+                    # Auto-retry with exponential backoff
+                    wait_time = 60 * (2 ** retry_count)  # 60s, 120s, 240s, 480s, 960s
+                    retry_count += 1
+                    print(f"      ⏳ Rate limit hit for {company_name} profile. Waiting {wait_time}s before retry {retry_count}/{max_retries}...")
+                    time.sleep(wait_time)
+                    continue  # Retry the request
+                else:
+                    # Exhausted all retries
+                    print(f"      ❌ Failed to generate profile for {company_name} after {max_retries} retries")
+                    raise Exception(f"Rate limit exceeded after {max_retries} retries for {company_name} company profile")
+            else:
+                # Non-rate-limit error
+                print(f"      ❌ Gemini API error for {company_name} profile: {e}")
+                raise Exception(f"Failed to generate company profile for {company_name}: {e}")
+    
+    # Should never reach here, but just in case
+    raise Exception(f"Failed to generate company profile for {company_name} after {max_retries} retries")
+
+
 def generate_partnership_document(company_data_1, company_data_2):
     """Generates a partnership or collaboration document between two companies."""
     company_1 = company_data_1.get('company_name', 'Company A')
