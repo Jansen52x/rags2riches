@@ -81,6 +81,8 @@ if 'workflow_complete' not in st.session_state:
     st.session_state.workflow_complete = False
 if 'verified_claims' not in st.session_state:
     st.session_state.verified_claims = []
+if 'generated_files' not in st.session_state:
+    st.session_state.generated_files = []
 
 # Sync verified claims from fact checker session if present
 if st.session_state.get("materials_verified_claims"):
@@ -120,6 +122,37 @@ st.markdown(f"""
     <p>Presentation materials recommendation and management</p>
 </div>
 """, unsafe_allow_html=True)
+
+
+def _normalize_public_path(path: str) -> str:
+    """Ensure the generated asset path works with FASTAPI_PUBLIC_URL."""
+    if not path:
+        return path
+    if not path.startswith("/"):
+        return f"/{path}"
+    return path
+
+
+def render_generated_assets(generated: list[str], header_text="🖼️ Generated Materials") -> None:
+    """Render generated media assets in a two-column layout."""
+    if not generated:
+        return
+    st.header(header_text)
+    cols = st.columns(2)
+    for idx, file_path in enumerate(generated):
+        col = cols[idx % 2]
+        with col:
+            public_path = _normalize_public_path(file_path)
+            full_url = f"{FASTAPI_PUBLIC_URL}{public_path}"
+            lower = public_path.lower()
+            if lower.endswith((".png", ".jpg", ".jpeg")):
+                st.image(full_url)
+            elif lower.endswith(".mp4"):
+                st.video(full_url)
+
+
+if st.session_state.get("generated_files"):
+    render_generated_assets(st.session_state.generated_files)
 
 # Sidebar for inputs
 with st.sidebar:
@@ -264,12 +297,15 @@ if verified_claims:
                         st.session_state.recommendations = result.get("recommendations", [])
                         st.session_state.selected_materials = result.get("selected_materials", [])
                         st.session_state.workflow_complete = True
+                        st.session_state.generated_files = result.get("generated_files", [])
                         
+                        render_generated_assets(st.session_state.generated_files)
+
                         # Show recommendations
                         st.header("📋 Material Recommendations")
                         for i, rec in enumerate(result.get("recommendations", [])):
                             priority_class = f"priority-{rec.get('priority', 'medium')}"
-                            
+
                             st.markdown(f"""
                             <div class="material-card {priority_class}">
                                 <h4>{rec['title']}</h4>
@@ -279,18 +315,6 @@ if verified_claims:
                                 <p><strong>Description:</strong> {rec['description']}</p>
                             </div>
                             """, unsafe_allow_html=True)
-                        
-                        # Show any generated files
-                        if result.get("generated_files"):
-                            st.header("🖼️ Generated Materials")
-                            cols = st.columns(2)
-                            for i, file_path in enumerate(result["generated_files"]):
-                                col = cols[i % 2]
-                                with col:
-                                    if file_path.lower().endswith(('.png', '.jpg', '.jpeg')):
-                                        st.image(f"{FASTAPI_PUBLIC_URL}{file_path}")
-                                    elif file_path.lower().endswith('.mp4'):
-                                        st.video(f"{FASTAPI_PUBLIC_URL}{file_path}")
                     else:
                         st.error(f"Error response from FastAPI service: {response.status_code}")
                         st.error(f"Response text: {response.text}")
@@ -313,17 +337,8 @@ if st.button("🔄 Refresh Generated Materials"):
         if response.ok:
             files = response.json().get("files", [])
             if files:
-                st.header("🖼️ Current Generated Materials")
-                cols = st.columns(2)
-                for i, file in enumerate(files):
-                    col = cols[i % 2]
-                    with col:
-                        name = file["name"]
-                        url = file["url"]
-                        if name.lower().endswith(('.png', '.jpg', '.jpeg')):
-                            st.image(f"{FASTAPI_PUBLIC_URL}{url}", caption=name)
-                        elif name.lower().endswith('.mp4'):
-                            st.video(f"{FASTAPI_PUBLIC_URL}{url}")
+                st.session_state.generated_files = [file["url"] for file in files]
+                render_generated_assets(st.session_state.generated_files, header_text="🖼️ Current Generated Materials")
             else:
                 st.info("No generated materials found")
     except Exception as e:
