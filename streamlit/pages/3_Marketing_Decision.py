@@ -133,13 +133,27 @@ def _normalize_public_path(path: str) -> str:
     return path
 
 
-def render_generated_assets(generated: list[str], header_text="🖼️ Generated Materials") -> None:
+def render_generated_assets(
+    generated: list[str],
+    header_text: str = "🖼️ Generated Materials",
+    empty_message: str = "Generate marketing materials to see assets here."
+) -> None:
     """Render generated media assets in a two-column layout."""
-    if not generated:
-        return
     st.header(header_text)
+    if not generated:
+        st.info(empty_message)
+        return
+    image_files = []
+    video_files = []
+    for path in generated:
+        lower = (path or "").lower()
+        if lower.endswith((".png", ".jpg", ".jpeg", ".gif")):
+            image_files.append(path)
+        elif lower.endswith((".mp4", ".mov", ".webm")):
+            video_files.append(path)
+    ordered_paths = image_files + video_files
     cols = st.columns(2)
-    for idx, file_path in enumerate(generated):
+    for idx, file_path in enumerate(ordered_paths):
         col = cols[idx % 2]
         with col:
             public_path = _normalize_public_path(file_path)
@@ -151,8 +165,45 @@ def render_generated_assets(generated: list[str], header_text="🖼️ Generated
                 st.video(full_url)
 
 
-if st.session_state.get("generated_files"):
-    render_generated_assets(st.session_state.generated_files)
+generated_assets_placeholder = st.empty()
+
+
+def draw_generated_assets() -> None:
+    """Render the generated assets section using the latest session state."""
+    generated_assets_placeholder.empty()
+    with generated_assets_placeholder.container():
+        render_generated_assets(
+            st.session_state.get("generated_files", []),
+            header_text="🖼️ Generated Materials",
+            empty_message="No generated materials yet. Use the buttons below to populate this section."
+        )
+
+
+draw_generated_assets()
+
+recommendations_placeholder = st.empty()
+
+
+def draw_recommendations() -> None:
+    """Render recommended materials from session state."""
+    recommendations_placeholder.empty()
+    with recommendations_placeholder.container():
+        if st.session_state.get("recommendations"):
+            st.header("📋 Material Recommendations")
+            for rec in st.session_state.recommendations:
+                priority_class = f"priority-{rec.get('priority', 'medium')}"
+                st.markdown(f"""
+                <div class="material-card {priority_class}">
+                    <h4>{rec['title']}</h4>
+                    <p><strong>Type:</strong> {rec['material_type'].replace('_', ' ').title()}</p>
+                    <p><strong>Priority:</strong> {rec['priority'].upper()}</p>
+                    <p><strong>Estimated Time:</strong> {rec['estimated_time_minutes']} minutes</p>
+                    <p><strong>Description:</strong> {rec['description']}</p>
+                </div>
+                """, unsafe_allow_html=True)
+
+
+draw_recommendations()
 
 # Sidebar for inputs
 with st.sidebar:
@@ -298,23 +349,8 @@ if verified_claims:
                         st.session_state.selected_materials = result.get("selected_materials", [])
                         st.session_state.workflow_complete = True
                         st.session_state.generated_files = result.get("generated_files", [])
-                        
-                        render_generated_assets(st.session_state.generated_files)
-
-                        # Show recommendations
-                        st.header("📋 Material Recommendations")
-                        for i, rec in enumerate(result.get("recommendations", [])):
-                            priority_class = f"priority-{rec.get('priority', 'medium')}"
-
-                            st.markdown(f"""
-                            <div class="material-card {priority_class}">
-                                <h4>{rec['title']}</h4>
-                                <p><strong>Type:</strong> {rec['material_type'].replace('_', ' ').title()}</p>
-                                <p><strong>Priority:</strong> {rec['priority'].upper()}</p>
-                                <p><strong>Estimated Time:</strong> {rec['estimated_time_minutes']} minutes</p>
-                                <p><strong>Description:</strong> {rec['description']}</p>
-                            </div>
-                            """, unsafe_allow_html=True)
+                        draw_generated_assets()
+                        draw_recommendations()
                     else:
                         st.error(f"Error response from FastAPI service: {response.status_code}")
                         st.error(f"Response text: {response.text}")
@@ -338,7 +374,7 @@ if st.button("🔄 Refresh Generated Materials"):
             files = response.json().get("files", [])
             if files:
                 st.session_state.generated_files = [file["url"] for file in files]
-                render_generated_assets(st.session_state.generated_files, header_text="🖼️ Current Generated Materials")
+                draw_generated_assets()
             else:
                 st.info("No generated materials found")
     except Exception as e:
