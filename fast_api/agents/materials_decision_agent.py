@@ -375,7 +375,7 @@ def convert_queue_to_agent_input(queue: List[Dict], client_context: str = "") ->
         print(f"      Type: {material_type}")
         print(f"      Description: {item.get('description', '')[:80]}...")
         
-        if material_type in ["chart", "slide", "infographic"]:
+        if material_type in ["chart", "slide"]:
             # Convert to chart specification
             # Infographics are data visualizations, not AI-generated images
             chart_spec = {
@@ -385,6 +385,14 @@ def convert_queue_to_agent_input(queue: List[Dict], client_context: str = "") ->
             }
             chart_specs.append(chart_spec)
             print(f"      ✓ Added to CHART_SPECS: {chart_spec['type']}")
+        elif material_type in ["infographic", "social_media_post"]:
+            prompt = build_ai_image_prompt(item, client_context)
+            ai_image_prompts.append({
+                "prompt": prompt,
+                "aspect_ratio": "16:9",
+                "filename": item.get("material_id") or f"asset_{uuid.uuid4().hex[:8]}"
+            })
+            print("      ✓ Added to AI_IMAGE_PROMPTS")
             
         elif material_type in ["video_explainer", "presentation_deck"]:
             video_specs.append(item)
@@ -507,6 +515,35 @@ def extract_data_from_claims(material_spec: Dict) -> Dict:
         "companies": ["Company A", "Company B", "Company C"],
         "market_share": [35, 30, 25]
     }
+
+
+def build_ai_image_prompt(material_spec: Dict, client_context: str = "") -> str:
+    """Create a descriptive prompt for the AI image generator based on material requirements."""
+    title = material_spec.get("title", "Marketing visual")
+    description = material_spec.get("description", "")
+    requirements = material_spec.get("content_requirements", {})
+    user_prompt = material_spec.get("user_prompt")
+
+    style = requirements.get("style", "modern professional")
+    color_scheme = requirements.get("color_scheme", "corporate palette")
+    special = ", ".join(requirements.get("special_elements", [])) or "data highlights"
+
+    prompt_parts = [
+        f"Title: {title}",
+        description,
+        f"Style: {style}",
+        f"Color palette: {color_scheme}",
+        f"Key elements: {special}",
+    ]
+
+    if client_context:
+        prompt_parts.append(f"Client context: {client_context}")
+    if user_prompt:
+        prompt_parts.append(f"Additional creative direction: {user_prompt}")
+
+    prompt_parts.append("High quality infographic, clean layout, suitable for enterprise presentation")
+
+    return " | ".join(filter(None, prompt_parts))
 
 
 def _render_text_image(path: Path, title: str, description: str, priority: str) -> None:
