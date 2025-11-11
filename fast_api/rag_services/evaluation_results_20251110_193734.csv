@@ -1,0 +1,123 @@
+test_id,query,answer,num_sources,expected_info,query_type,difficulty,faithfulness,answer_relevance,context_relevance,word_count,context_utilization,specificity,retrieval_score
+1,What is Microsoft's contact email address?,"Unfortunately, the contact email address for Microsoft is not provided in the given context.",5,support@microsoft.com,direct_factual,easy,5.0,5.0,1.0,14,0.23076923076923078,0.0,0.49283054871619125
+2,Which company operates in the Electric Vehicles & Clean Energy industry?,Tesla,5,Tesla,direct_factual,easy,5.0,5.0,5.0,1,1.0,0.0,0.5069074005252067
+3,What is the projected market size for cloud computing and software by 2027?,"According to the provided context, the projected market size for cloud computing and software by 2027 is over $1 trillion.",5,Over $1 trillion by 2027,market_analysis,medium,5.0,5.0,5.0,20,0.7368421052631579,0.75,0.4911164297038312
+4,Compare the projected market sizes for the CRM market and ERP market in their respective forecast years.,"Based on the provided context, here is a comparison of the projected market sizes for the CRM market and ERP market in their respective forecast years:
+
+* CRM Market: Projected to reach over $100 bill",5,CRM market: over $100 billion by 2029; ERP market: over $80 billion by 2028,comparison,hard,5.0,5.0,5.0,98,0.42105263157894735,0.75,0.41497083865031376
+5,Is Stripe involved in the payment processing industry?,"Yes, Stripe is involved in the payment processing industry. 
+
+Key facts:
+- Company: Stripe
+- Industry: Payment Processing
+- Description: Technology company building economic infrastructure for the int",5,"Yes, Stripe is a payment processing company",direct_factual,easy,5.0,5.0,5.0,46,0.6388888888888888,0.5,0.5652269407980499
+6,What are the key challenges facing the semiconductor manufacturing sector?,"Based on the provided context, the key challenges facing the semiconductor manufacturing sector include:
+
+* Geopolitical risks
+* Supply chain vulnerabilities
+* Rising costs of advanced manufacturing t",5,"Geopolitical risks, supply chain vulnerabilities, rising costs of advanced manufacturing technologies",market_analysis,medium,,,,28,0.6956521739130435,0.0,0.49418773136924976
+7,Which companies provide cloud-based services according to the data?,"Based on the provided context, the following companies provide cloud-based services:
+
+* Snowflake (Data Cloud & Analytics)
+* Microsoft (Cloud Computing & Software)
+* ServiceNow (Enterprise Cloud Solut",5,"Multiple companies including Microsoft, Amazon, Google, Oracle, Salesforce, Snowflake, ServiceNow, Twilio, Dropbox",aggregation,hard,,,,57,0.5555555555555556,0.25,0.5025771494846403
+8,Does Netflix operate in the cloud computing industry?,"No, Netflix does not operate in the cloud computing industry. According to the provided context, Netflix operates in the Streaming Entertainment industry, providing subscription-based streaming servic",5,"No, Netflix operates in the streaming entertainment industry",negative_test,easy,,,,33,0.6071428571428571,0.25,0.4912708275763641
+9,What is Shopify's phone number?,"Unfortunately, the provided context does not mention Shopify's phone number. However, it does provide an email address for contact: support@shopify.com.",5,+1-888-746-7439,direct_factual,easy,,,,20,0.15789473684210525,0.0,0.4563953552913088
+10,Which company in the data has the highest projected market growth rate by percentage?,"Based on the provided context, the company with the highest projected market growth rate by percentage is the one mentioned in Source 2, with a projected subscription revenue growth rate of 22% to 23%",5,Requires analysis across multiple industries to determine highest CAGR,complex_reasoning,very_hard,,,,126,0.44594594594594594,0.75,0.4574731316984858
+11,What are the main challenges facing the social media and technology sector?,"Based on the provided context, the main challenges facing the social media and technology sector include:
+
+* Navigating increasing regulatory scrutiny around data privacy and antitrust concerns
+* Comb",5,"Regulatory scrutiny around data privacy and antitrust, combating misinformation, maintaining user trust",market_analysis,medium,5.0,5.0,5.0,62,0.6521739130434783,0.25,0.5070740062415376
+12,Is Apple's contact email support@microsoft.com?,"No, Apple's contact email is not support@microsoft.com. According to the context, Apple's contact email is actually support@apple.com.",5,"No, Apple's contact email is support@apple.com",negative_test,easy,5.0,5.0,5.0,17,0.23076923076923078,0.0,0.509662697075281
+13,What products does Tesla manufacture?,"Based on the provided context, Tesla manufactures the following products:
+
+* Electric vehicles:
+	+ Model S
+	+ Model 3
+	+ Model X
+	+ Model Y
+* Battery energy storage products:
+	+ Powerwall (residential",5,"Electric vehicles, battery energy storage, and solar products",direct_factual,easy,5.0,5.0,5.0,38,0.5,0.25,0.475413862234801
+14,Which industries are experiencing labor shortage challenges?,"Based on the provided context, the following industry is experiencing labor shortage challenges:
+
+* Hospitality & Travel (Source 1 and Source 2)",5,"Multiple industries including hospitality & travel, software development tools, enterprise technology & consulting",aggregation,hard,5.0,5.0,4.0,22,0.5238095238095238,0.25,0.44679403552985997
+15,What is the projected market size for the global e-commerce market in 2024?,"According to the provided context, the projected market size for the global e-commerce market in 2024 is $6.3 trillion. This information is mentioned in multiple sources, including Source 1, Source 2,",5,Approximately $6.3 trillion in 2024,market_analysis,medium,5.0,5.0,5.0,34,0.5555555555555556,0.75,0.4464318935560899
+16,Does Zoom provide services for hospitality and travel?,"No, according to the provided context, Zoom does not provide services for hospitality and travel. Zoom is a leader in modern enterprise video communications, providing a unified platform for video con",5,"No, Zoom provides video communications services",negative_test,easy,,,,55,0.8125,0.0,0.4947799900247246
+17,What is the domain for Uber?,The domain for Uber is uber.com.,5,uber.com,direct_factual,easy,,,,6,0.6666666666666666,0.0,0.4764591162844152
+18,Compare the challenges faced by the digital payments sector and payment processing sector.,"**Comparison of Challenges Faced by Digital Payments Sector and Payment Processing Sector**
+
+Based on the provided context, here is a comparison of the challenges faced by the digital payments sector ",5,Both face evolving regulatory landscapes and cybersecurity threats; payment processing also faces integration challenges with blockchain/AI,comparison,hard,,,,128,0.5714285714285714,0.5,0.4910928206776517
+19,"Which company develops Jira, Confluence, and Trello?",Atlassian,5,Atlassian,direct_factual,easy,,,,1,1.0,0.0,0.48980473149687087
+20,What is the projected CAGR for the music streaming market from 2024 to 2029?,"To calculate the projected CAGR (Compound Annual Growth Rate) for the music streaming market from 2024 to 2029, we need to use the following formula:
+
+CAGR = (End Value / Start Value)^(1 / Number of Y",5,Calculation based on growth from $48.2B (2024) to $64.1B (2029),market_analysis,hard,,,,98,0.38333333333333336,1.0,0.47687901784821285
+21,What services does AWS provide according to the Amazon company description?,"According to the Amazon company description, AWS provides the following services:
+
+* Compute: EC2 instances ranging from general-purpose to specialized workloads, offering unparalleled scalability and",5,Cloud computing services (AWS is mentioned in the company description),direct_factual,medium,5.0,5.0,5.0,100,0.9102564102564102,0.5,0.4732900350785547
+22,Which companies are specifically mentioned as providing collaboration tools or platforms?,"Based on the provided context, the following companies are specifically mentioned as providing collaboration tools or platforms:
+
+* Dropbox (Source 1 and Source 2)
+* Meta (Source 3) - specifically men",5,"Slack, Dropbox, Atlassian",aggregation,medium,5.0,5.0,5.0,37,0.3870967741935484,0.5,0.4906123932021139
+23,Is Salesforce's projected market growth faster than SAP's ERP market?,"Based on the provided context, here are the relevant growth projections for both companies:
+
+* Salesforce's CRM market is projected to reach over $100 billion by 2029, but the CAGR is not explicitly s",5,CRM market projected to reach $100B+ by 2029 vs ERP market $80B+ by 2028 - requires analysis,comparison,hard,5.0,4.0,5.0,104,0.46153846153846156,0.75,0.5006680568565669
+24,What is Nvidia's industry sector?,Nvidia's industry sector is Graphics Processing & AI.,5,Graphics Processing & AI,direct_factual,easy,5.0,5.0,5.0,8,0.75,0.25,0.5203101924142208
+25,Does Oracle operate in the automotive industry?,"No, Oracle does not operate in the automotive industry. According to the provided context, Oracle operates in the Enterprise Software & Cloud industry, developing enterprise software products, databas",5,"No, Oracle operates in Enterprise Software & Cloud",negative_test,easy,5.0,5.0,4.0,44,0.5151515151515151,0.25,0.5069608348288606
+26,What are the future outlook drivers for the enterprise cloud solutions market?,"Based on the provided context, the future outlook drivers for the enterprise cloud solutions market are:
+
+* Digital transformation initiatives
+* Innovative cloud-native technologies
+
+These drivers are",5,"Digital transformation initiatives and innovative cloud-native technologies, potentially reaching over $1 trillion by 2027",market_analysis,medium,,,,44,0.7105263157894737,0.75,0.5387416812531424
+27,"Which company provides programmable communication tools for voice, messaging, and video?",Twilio,5,Twilio,direct_factual,easy,,,,1,1.0,0.0,0.5042159750809289
+28,Compare the market sizes between consumer electronics & software and streaming entertainment in 2024.,"Based on the provided context, here is a comparison of the market sizes between consumer electronics & software and streaming entertainment in 2024:
+
+* Consumer Electronics & Software: projected to re",5,Consumer electronics & software: $1.7 trillion; Streaming entertainment: $640 billion (both in 2024),comparison,medium,,,,71,0.6086956521739131,1.0,0.4654787841548959
+29,What technologies are driving growth in the hospitality and travel sector?,"According to the provided context, the technologies driving growth in the hospitality and travel sector include:
+
+* Artificial Intelligence (AI)
+* Virtual Reality (VR)
+
+These technological advancement",5,"AI and virtual reality, along with demand from emerging markets",market_analysis,medium,,,,44,0.5294117647058824,0.25,0.4857161540863954
+30,Is Dropbox's primary service video conferencing?,"No, Dropbox's primary service is not video conferencing. According to the provided context, Dropbox is a cloud storage and collaboration company that offers a suite of professional services, including",5,"No, Dropbox provides cloud storage, file synchronization, and collaboration tools",negative_test,easy,5.0,5.0,5.0,60,0.5319148936170213,0.25,0.5055983352299616
+31,What is the contact email for Cisco?,The contact email for Cisco is: support@cisco.com,5,support@cisco.com,direct_factual,easy,5.0,5.0,5.0,7,0.7142857142857143,0.0,0.4865532485088778
+32,Which industries mention AI as a key growth driver or challenge?,"Based on the provided context, the following industries mention AI as a key growth driver or challenge:
+
+* Graphics Processing & AI (Source 1 and Source 2): AI is mentioned as a key driver of growth, ",5,"Multiple industries including cloud computing, graphics processing, enterprise technology, creative software, and many others",aggregation,hard,5.0,5.0,5.0,161,0.6404494382022472,0.5,0.5002624594971089
+33,What is the estimated market size for the software development tools market in 2023?,The estimated market size for the software development tools market in 2023 is over $50 billion.,5,Over $50 billion in 2023,market_analysis,medium,5.0,5.0,5.0,16,0.8571428571428571,0.75,0.4683451768790256
+34,Does Square provide ride-sharing services?,"No, Square does not provide ride-sharing services. According to the context, Square provides a suite of services focused on payment processing, business management, and financial solutions, but ride-s",5,"No, Square provides financial services and mobile payment solutions with point-of-sale systems",negative_test,easy,5.0,5.0,5.0,60,0.46511627906976744,0.25,0.47691094699791964
+35,What subscription-based service does Spotify provide?,"Spotify provides a suite of premium services, including:
+
+* Premium Subscription Services: offering ad-free listening, offline downloads, and high-quality audio streaming across all devices, with tier",5,Digital music streaming service with access to millions of songs and podcasts,direct_factual,easy,,,,64,0.82,0.25,0.49943910152946014
+36,Which company has the domain datadoghq.com?,Datadog,5,Datadog,direct_factual,easy,,,,1,1.0,0.0,0.5087905116302734
+37,What common challenge is mentioned across cloud-related industries?,"Based on the provided context, a common challenge mentioned across cloud-related industries is:
+
+* Managing complexities in cloud environments (mentioned in Source 2: Enterprise Cloud Solutions, and S",5,"Cybersecurity threats, data security concerns, and managing complex environments",complex_reasoning,hard,,,,80,0.5652173913043478,0.5,0.5077798335210311
+38,Is Google's domain apple.com?,"No, Google's domain is not apple.com. According to the client data, Google's domain is google.com.",5,"No, Google's domain is google.com",negative_test,easy,,,,15,0.25,0.0,0.46444185023309553
+39,What is the projected market size for the Data Cloud & Analytics market by 2028?,"According to the industry overview provided in Sources 1 and 3, the Data Cloud & Analytics market is projected to reach over $540 billion by 2028.",5,Over $540 billion by 2028,market_analysis,medium,5.0,5.0,5.0,26,0.7916666666666666,1.0,0.4650528921307771
+40,Which companies are based in or have operations in Southeast Asia or Singapore?,"Unfortunately, the provided context does not contain information about companies based in or having operations in Southeast Asia or Singapore. The context appears to be about various companies' servic",5,"Shopee (based in Singapore, operates in Southeast Asia)",aggregation,medium,5.0,3.0,1.0,80,0.10526315789473684,0.25,0.4419374966807309
+41,Compare the market growth projections between the networking & communications sector and the monitoring & analytics market.,"Here is a comparison of the market growth projections between the Networking & Communications sector and the Monitoring & Analytics market:
+
+**Networking & Communications Sector:**
+
+* Projected market",5,Networking: $725.8B in 2024; Monitoring & Analytics: over $400B by 2029,comparison,hard,5.0,5.0,5.0,152,0.6133333333333333,1.0,0.48641882429488553
+42,What company description is provided for IBM?,"Provides enterprise software, hardware, cloud computing, and IT consulting services.",5,"Provides enterprise software, hardware, cloud computing, and IT consulting services",direct_factual,easy,5.0,5.0,5.0,10,1.0,0.0,0.5062276623480552
+43,Does PayPal operate in the video communications industry?,"No, PayPal does not operate in the video communications industry. According to the provided context, PayPal operates in the digital payments industry, offering online payment system services, money tr",5,"No, PayPal operates in the digital payments industry",negative_test,easy,5.0,5.0,5.0,39,0.5757575757575758,0.0,0.5164367095811115
+44,What are the main revenue sources or business models mentioned for Adobe?,"Based on the provided context, the main revenue sources or business models mentioned for Adobe are:
+
+* Subscription-based model
+* Digital Media segment revenue, which includes:
+	+ Creative Cloud reven",5,"Multimedia and creativity software, digital marketing tools, and document solutions",direct_factual,medium,,,,86,0.4827586206896552,0.75,0.5044570635066514
+45,Which industries have market projections exceeding $500 billion?,"Based on the provided context, the following industries have market projections exceeding $500 billion:
+
+* Creative Software & Digital Marketing: projected to exceed $1 trillion by 2026
+* Enterprise S",5,"Multiple including cloud computing ($1T+), enterprise cloud solutions ($1T by 2027), data cloud & analytics ($540B by 2028), ride-sharing & delivery ($500B+ in 2024), semiconductor ($600B in 2024, $1T by 2030)",aggregation,very_hard,,,,53,0.5641025641025641,1.0,0.46962553540855445
+46,What is the phone number for Slack?,The phone number for Slack is +1-800-531-0228.,5,+1-800-531-0228,direct_factual,easy,,,,7,0.5714285714285714,0.25,0.45450890594369486
+47,How does the projected CAGR for digital payments compare to e-commerce platforms?,"Based on the provided context, here is the comparison of the projected Compound Annual Growth Rate (CAGR) for digital payments and e-commerce platforms:
+
+* Digital Payments: The projected CAGR is arou",5,Digital payments: ~12.07% CAGR through 2029; E-commerce platforms: growth to $200B+ by 2027 from $140B in 2023,comparison,very_hard,,,,64,0.575,1.0,0.5323004300849086
+48,What specific challenge related to artists is mentioned in the music streaming industry?,"According to the industry overview in Source 1 and Source 2, one specific challenge related to artists in the music streaming industry is ensuring fair compensation for artists.",5,"Ensuring fair compensation for artists, along with combating piracy",market_analysis,medium,,,,28,0.7391304347826086,0.25,0.48015457874787215
+49,Is Airbnb's primary business model focused on cloud computing?,"No, Airbnb's primary business model is not focused on cloud computing. According to Source 5, Airbnb's industry is Hospitality & Travel, and it is described as an online marketplace for short-term hom",5,"No, Airbnb is an online marketplace for short-term homestays and experiences",negative_test,easy,5.0,5.0,5.0,45,0.5384615384615384,0.25,0.4864460829095534
+50,"Which companies mention metaverse, Web3, or AR/VR as part of their industry's future outlook?","Based on the provided context, the following companies mention metaverse, Web3, or AR/VR as part of their industry's future outlook:
+
+* Meta: mentions metaverse development and augmented reality as ar",5,"Google (metaverse, Web3), Meta (metaverse, augmented reality), Nvidia (metaverse applications), Airbnb (virtual reality)",aggregation,hard,5.0,5.0,5.0,94,0.49206349206349204,0.5,0.5084756630865547
