@@ -182,7 +182,9 @@ def finalize_node(state: ContentAgentState) -> ContentAgentState:
     """
     print("\n📦 Finalizing results...")
     
-    # Extract file paths from tool responses
+    # Start with any files already captured earlier in the flow (e.g., AI images)
+    existing_files = list(state.get("generated_files", []))
+    # Extract additional file paths from tool responses
     generated_files = []
     
     for message in state.get("messages", []):
@@ -216,14 +218,25 @@ def finalize_node(state: ContentAgentState) -> ContentAgentState:
             elif general_file_match:
                 generated_files.append(general_file_match.group(0))
     
-    print(f"   Found {len(generated_files)} generated files")
+    print(f"   Found {len(generated_files)} generated files from messages")
     if generated_files:
         for f in generated_files:
             print(f"      - {f}")
-    
+
+    # Combine paths while preserving order and removing duplicates
+    combined_files = []
+    for path in existing_files + generated_files:
+        if path and path not in combined_files:
+            combined_files.append(path)
+
+    print(f"   → Total unique generated files: {len(combined_files)}")
+    if combined_files:
+        for f in combined_files:
+            print(f"      • {f}")
+
     return {
         **state,
-        "generated_files": generated_files
+        "generated_files": combined_files
     }
 
 

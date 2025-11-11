@@ -1,7 +1,7 @@
 import json
 from typing import TypedDict, List, Dict, Any
 from langgraph.graph import StateGraph, START, END
-from langgraph.prebuilt import create_react_agent
+from langchain.agents import create_agent
 import asyncio
 import psycopg
 from langchain_ollama import ChatOllama
@@ -528,5 +528,5 @@ bigLM = ChatGoogleGenerativeAI(
 )
 
 tools = [duckduckgo_search_text, tavily_search, search_wikipedia, get_news_articles, query_rag_system] # Agent needs the search tools, the scraper and the RAG query tool
-agent = create_react_agent(bigLM, tools)
+agent = create_agent(bigLM, tools)
 
