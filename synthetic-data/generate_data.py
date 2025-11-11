@@ -283,7 +283,7 @@ if __name__ == "__main__":
   OUTPUT_DIR = 'output' # Output directory relative to synthetic-data folder
   GENERATE_IMAGES = os.environ.get('GENERATE_IMAGES', 'true').lower() == 'true'
   GENERATE_PDFS = os.environ.get('GENERATE_PDFS', 'true').lower() == 'true'
-  CLEAN_OUTPUT = os.environ.get('CLEAN_OUTPUT_ON_START', 'true').lower() == 'true'
+  CLEAN_OUTPUT = os.environ.get('CLEAN_OUTPUT_ON_START', 'false').lower() == 'true'
   
   # Multi-document generation settings
   MULTI_DOCS_PER_COMPANY = True # Generate multiple diverse documents per company
