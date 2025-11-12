@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     # Models
     LLM_MODEL: str = "meta/llama-3.1-70b-instruct"
     EMBEDDING_MODEL: str = "nvidia/nv-embed-v1"
+    JUDGE_MODEL: str = "nvidia/llama-3.1-nemotron-70b-instruct"
 
     # LLM Generation Settings
     MAX_TOKENS: int = 2000
@@ -30,6 +31,9 @@ class Settings(BaseSettings):
     # Query Defaults
     DEFAULT_K: int = 5
 
+    # Evaluation Configuration
+    EVAL_OUTPUT_DIR: str = "evaluations"
+
     # Service Configuration
     LOG_LEVEL: str = "INFO"
     SERVICE_PORT: int = 8001
@@ -42,6 +46,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = True
+        extra = "ignore"  # Ignore extra environment variables
 
 
 settings = Settings()

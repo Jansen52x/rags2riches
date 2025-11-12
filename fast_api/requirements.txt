@@ -4,7 +4,11 @@ langchain-community
 langgraph
 langchain-tavily
 langchain-ollama
-langchain-google-genai
+
+# ✅ Updated to fix startup crash
+langchain-google-genai>=1.0.0
+google-generativeai>=0.5.4
+
 tzdata
 wikipedia
 wikipedia-api
@@ -21,7 +25,6 @@ openai
 chromadb
 sentence_transformers
 transformers
-# Materials + Content Generation Dependencies
 plotly==6.1.1
 kaleido
 moviepy

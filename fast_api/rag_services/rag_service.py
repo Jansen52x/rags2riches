@@ -74,12 +74,17 @@ class RAGService:
             formatted_results = []
             if results['documents'] and len(results['documents']) > 0:
                 for i in range(len(results['documents'][0])):
+                    # ChromaDB returns L2 distance (can be > 1), convert to normalized similarity
+                    # Use negative exponential to convert distance to 0-1 similarity score
+                    distance = results['distances'][0][i] if results['distances'] else 1.0
+                    similarity_score = 1.0 / (1.0 + distance)  # Converts [0, inf] distance to [0, 1] similarity
+
                     formatted_results.append({
                         'content': results['documents'][0][i],
                         'metadata': results['metadatas'][0][i] if results['metadatas'] else {},
-                        # Convert L2 distance to cosine similarity-like score (0-1)
-                        'score': 1 - results['distances'][0][i] if results['distances'] else 0.0,
-                        'id': results['ids'][0][i]
+                        'score': similarity_score,
+                        'id': results['ids'][0][i],
+                        'distance': distance  # Keep original distance for debugging
                     })
             
             if not formatted_results:
@@ -88,24 +93,51 @@ class RAGService:
 
             if self.reranker:
                 logger.info(f"Re-ranking {len(formatted_results)} initial documents...")
-                
+
+                # Store before-reranking state for evaluation
+                before_rerank = [
+                    {
+                        'id': doc['id'],
+                        'score': doc['score'],
+                        'content': doc['content'][:200]  # Truncate for storage
+                    }
+                    for doc in formatted_results
+                ]
+
                 # Prepare pairs for the cross-encoder: [query, doc_content]
                 pairs = [[query, doc['content']] for doc in formatted_results]
-                
-                # Get relevance scores
+
+                # Get relevance scores from reranker
                 scores = self.reranker.predict(pairs)
-                
+
                 # Add scores to documents
                 for doc, score in zip(formatted_results, scores):
                     doc['rerank_score'] = float(score)
-                
+
                 # Sort by new re-rank score (descending)
                 formatted_results.sort(key=lambda x: x['rerank_score'], reverse=True)
-                
+
                 # Filter to the final top-k (e.g., RERANK_TOP_K = 3)
                 final_k = settings.RERANK_TOP_K
                 reranked_results = formatted_results[:final_k]
-                
+
+                # Store after-reranking state for evaluation
+                after_rerank = [
+                    {
+                        'id': doc['id'],
+                        'score': doc['rerank_score'],
+                        'content': doc['content'][:200]
+                    }
+                    for doc in reranked_results
+                ]
+
+                # Attach reranking info to results for evaluation
+                for doc in reranked_results:
+                    doc['_reranking_info'] = {
+                        'before_rerank': before_rerank,
+                        'after_rerank': after_rerank
+                    }
+
                 logger.info(f"Found {len(reranked_results)} re-ranked results for query: {query[:50]}...")
                 return reranked_results
 
@@ -152,20 +184,46 @@ class RAGService:
                 for i, result in enumerate(search_results)
             ])
 
-            # Generate answer using LLM
-            answer = self.llm_service.generate(query, context)
+            # Extract reranking info if available
+            reranking_info = search_results[0].get('_reranking_info') if search_results else None
+
+            # Prepare retrieved docs for evaluation
+            # IMPORTANT: Use the FINAL score (rerank_score if available, otherwise similarity score)
+            retrieved_docs = [
+                {
+                    'id': result['id'],
+                    'content': result['content'],
+                    'score': result.get('rerank_score', result.get('score', 0)),
+                    'metadata': result.get('metadata', {})
+                }
+                for result in search_results
+            ]
+
+            # Generate answer using LLM (with evaluation info)
+            answer = self.llm_service.generate(
+                query,
+                context,
+                retrieved_docs=retrieved_docs,
+                reranking_info=reranking_info
+            )
 
             response = {
                 "answer": answer,
             }
 
             if include_sources:
+                # IMPORTANT: Return the FINAL score for evaluation
+                # Use rerank_score if reranking was used, otherwise use similarity score
                 response["sources"] = [
                     {
                         "content": result['content'],
                         "metadata": result['metadata'],
                         "id": result['id'],
-                        "score": result.get('rerank_score', result.get('score', 0.0)) # Use rerank_score if available
+                        "score": result.get('rerank_score', result.get('score', 0.0)),  # Final score
+                        # Include both scores for debugging if desired
+                        "similarity_score": result.get('score', 0.0),  # Original similarity
+                        "rerank_score": result.get('rerank_score'),  # Rerank score (may be None)
+                        "distance": result.get('distance')  # Original distance (for debugging)
                     }
                     for result in search_results
                 ]
