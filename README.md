@@ -194,7 +194,26 @@ Generated Content (PNG charts, MP4 videos, AI images)
    cd rags2riches
    ```
 
-2. **Set up environment variables**
+2. **Install and set up Ollama (Local LLM)**
+   
+   The project uses Ollama for local LLM inference. Install Ollama and pull the required models:
+   
+   ```bash
+   # Install Ollama (if not already installed)
+   # macOS/Linux: curl https://ollama.ai/install.sh | sh
+   # Or download from https://ollama.ai/download
+   
+   # Pull required models
+   ollama pull llama3.2:3b      # Used by fact checker agent
+   ollama pull qwen3:0.6b       # Used by materials decision agent
+   
+   # Start Ollama server (runs on port 11434 by default)
+   ollama serve
+   ```
+   
+   **Note**: Keep the `ollama serve` command running in a separate terminal. The Docker containers connect to Ollama via `host.docker.internal:11434`.
+
+3. **Set up environment variables**
    
    Create `secrets.env` in the project root:
    ```env
@@ -209,7 +228,7 @@ Generated Content (PNG charts, MP4 videos, AI images)
    TAVILY_API_KEY=your-tavily-key
    ```
 
-3. **Start services with Docker Compose**
+4. **Start services with Docker Compose**
    ```bash
    docker-compose up -d
    ```
@@ -221,13 +240,13 @@ Generated Content (PNG charts, MP4 videos, AI images)
    - Streamlit UI (port 8501)
    - pgAdmin (port 5050)
 
-4. **Initialize the database**
+5. **Initialize the database**
    ```bash
    # The db_init service runs automatically, or manually:
    python init_db.py
    ```
 
-5. **Ingest documents (optional)**
+6. **Ingest documents (optional)**
    ```bash
    # Ingest synthetic data for RAG
    cd data
@@ -350,7 +369,7 @@ rags2riches/
 - **LangChain**: LLM integration and tooling
 - **Claude (Anthropic)**: Primary LLM for content generation
 - **Gemini (Google)**: Fact-checking LLM
-- **Ollama**: Local LLM for some operations
+- **Ollama**: Local LLM for materials decision and other operations
 - **NVIDIA NIM**: Embeddings and LLM inference
 
 ### Databases
@@ -496,20 +515,27 @@ Edit `docker-compose.yml` to:
 
 ### Common Issues
 
-1. **API Key Errors**
+1. **Ollama Connection Errors**
+   - Ensure Ollama is running: `ollama serve` (must be running before starting Docker)
+   - Verify models are installed: `ollama list` (should show `llama3.2:3b` and `qwen3:0.6b`)
+   - Check Ollama is accessible: `curl http://localhost:11434/api/tags`
+   - On Docker, ensure `OLLAMA_HOST=http://host.docker.internal:11434` is set correctly
+   - If using Linux, you may need to use `host.docker.internal` or the host's IP address
+
+2. **API Key Errors**
    - Ensure `secrets.env` exists in project root
    - Check all required keys are set
    - Restart Docker containers after updating keys
 
-2. **Database Connection Errors**
+3. **Database Connection Errors**
    - Ensure PostgreSQL container is running: `docker-compose ps`
    - Check connection string in environment variables
 
-3. **ChromaDB Connection Errors**
+4. **ChromaDB Connection Errors**
    - Verify ChromaDB is running: `curl http://localhost:8000/api/v1/heartbeat`
    - Check `CHROMADB_HOST` and `CHROMADB_PORT` settings
 
-4. **Import Errors**
+5. **Import Errors**
    - Ensure all dependencies are installed: `pip install -r requirements.txt`
    - Check Python path and virtual environment
 
