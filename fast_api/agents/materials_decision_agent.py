@@ -15,6 +15,7 @@ from PIL import Image, ImageDraw, ImageFont
 import textwrap
 import traceback
 import os
+import re
 
 # Use proper package import - no sys.path hacking needed!
 from .content_generation.content_generation_agent import create_content_generation_agent
@@ -273,7 +274,6 @@ def create_generation_queue(state: MaterialsDecisionState) -> Command:
     """Create a prioritized queue for material generation"""
     
     selected_materials = state["selected_materials"]
-    user_prompt: Optional[str] = state.get("user_prompt")
     
     # Create generation tasks with specific instructions
     generation_queue = []
@@ -296,8 +296,7 @@ def create_generation_queue(state: MaterialsDecisionState) -> Command:
             "claim_references": material["claim_references"],
             "priority": material["priority"],
             "status": "pending",
-            "created_at": datetime.now(ZoneInfo("Asia/Singapore")).isoformat(),
-            "user_prompt": user_prompt  # User creative guidance
+            "created_at": datetime.now(ZoneInfo("Asia/Singapore")).isoformat()
         }
         generation_queue.append(generation_task)
         print(f"      ✓ Added to queue with type='{material_type}'")
@@ -350,19 +349,32 @@ def save_materials_decision(state: MaterialsDecisionState) -> Command:
         print(f"Error saving materials decision: {e}")
         return Command(update={"status": "save_failed"})
     
-def convert_queue_to_agent_input(queue: List[Dict], client_context: str = "") -> Dict:
+def convert_queue_to_agent_input(queue: List[Dict], client_context: str = "", creative_prompt_text: Optional[str] = None) -> Dict:
     """Convert materials queue to content generation agent input format
     
     Args:
         queue: List of material generation tasks
         client_context: Client context string from the original request
+        creative_prompt_text: Optional text area input with numbered prompts for AI images
     """
+    
+    # Parse numbered prompts from creative_prompt_text if provided
+    # These prompts are added directly to ai_image_prompts regardless of material type
+    ai_image_prompts = []
+    if creative_prompt_text:
+        parsed_prompts = parse_numbered_prompts(creative_prompt_text)
+        print(f"\n📝 Parsed {len(parsed_prompts)} prompts from creative_prompt_text:")
+        for i, prompt in enumerate(parsed_prompts, 1):
+            ai_image_prompts.append({
+                "prompt": prompt,
+                "aspect_ratio": "16:9",
+                "filename": f"ai_image_{i}"
+            })
+            print(f"   {i}. {prompt[:80]}...")
     
     # Extract different material types
     chart_specs = []
-    ai_image_prompts = []
     video_specs = []
-    
     
     print(f"\n🔍 Converting {len(queue)} items from queue to agent input:")
     
@@ -375,9 +387,11 @@ def convert_queue_to_agent_input(queue: List[Dict], client_context: str = "") ->
         print(f"      Type: {material_type}")
         print(f"      Description: {item.get('description', '')[:80]}...")
         
-        if material_type in ["chart", "slide"]:
-            # Convert to chart specification
-            # Infographics are data visualizations, not AI-generated images
+        # Normalize material_type to lowercase for comparison
+        material_type_lower = str(material_type).lower() if material_type else ""
+        
+        if material_type_lower in ["chart", "slide", "infographic"]:
+            # Convert to chart specification (infographics are charts)
             chart_spec = {
                 "type": determine_chart_type(item),
                 "title": item.get("title"),
@@ -385,20 +399,15 @@ def convert_queue_to_agent_input(queue: List[Dict], client_context: str = "") ->
             }
             chart_specs.append(chart_spec)
             print(f"      ✓ Added to CHART_SPECS: {chart_spec['type']}")
-        elif material_type in ["infographic", "social_media_post"]:
-            prompt = build_ai_image_prompt(item, client_context)
-            ai_image_prompts.append({
-                "prompt": prompt,
-                "aspect_ratio": "16:9",
-                "filename": item.get("material_id") or f"asset_{uuid.uuid4().hex[:8]}"
-            })
-            print("      ✓ Added to AI_IMAGE_PROMPTS")
-            
-        elif material_type in ["video_explainer", "presentation_deck"]:
+        elif material_type_lower in ["video_explainer", "presentation_deck"]:
             video_specs.append(item)
             print(f"      ✓ Added to VIDEO_SPECS")
+        elif material_type_lower in ["social_media_post"]:
+            # Social media posts can be AI images, but we'll use the prompts from text area
+            # If no prompts provided, skip or use fallback
+            print(f"      ⚠️  Social media post - will use AI image prompts from text area if provided")
         else:
-            print(f"      ⚠️  Unknown material type: {material_type}")
+            print(f"      ⚠️  Unknown material type: {material_type} (normalized: {material_type_lower})")
     
     print(f"\n📊 Conversion Summary:")
     print(f"   Chart Specifications: {len(chart_specs)}")
@@ -433,14 +442,16 @@ def trigger_content_generation(generation_queue: str) -> str:
     try:
         data = json.loads(generation_queue)
         
-        # Handle both old format (just queue) and new format (queue + client_context)
+        # Handle both old format (just queue) and new format (queue + client_context + creative_prompt)
         if isinstance(data, dict) and "generation_queue" in data:
             queue = data["generation_queue"]
             client_context = data.get("client_context", "")
+            creative_prompt_text = data.get("creative_prompt_text", "")
         else:
             # Backward compatibility: data is the queue itself
             queue = data
             client_context = ""
+            creative_prompt_text = ""
         
         print(f"\n📋 Generation Queue received ({len(queue)} items):")
         for i, item in enumerate(queue, 1):
@@ -449,8 +460,11 @@ def trigger_content_generation(generation_queue: str) -> str:
         if client_context:
             print(f"\n📝 Client Context: {client_context[:100]}...")
         
+        if creative_prompt_text:
+            print(f"\n🎨 Creative Prompt Text provided ({len(creative_prompt_text)} chars)")
+        
         # Convert materials queue to content agent format
-        input_state = convert_queue_to_agent_input(queue, client_context)
+        input_state = convert_queue_to_agent_input(queue, client_context, creative_prompt_text)
         
         print(f"\n🔄 Converted input state:")
         print(f"   AI Image Prompts: {len(input_state['data_available'].get('ai_image_prompts', []))}")
@@ -517,8 +531,86 @@ def extract_data_from_claims(material_spec: Dict) -> Dict:
     }
 
 
-def build_ai_image_prompt(material_spec: Dict, client_context: str = "") -> str:
-    """Create a descriptive prompt for the AI image generator based on material requirements."""
+def parse_numbered_prompts(creative_prompt_text: str) -> List[str]:
+    """Parse numbered prompts from text area input.
+    
+    Expected format:
+    1. first prompt text
+    2. second prompt text
+    3. third prompt text
+    
+    Also handles prompts that might be on the same line separated by "2.", "3.", etc.
+    
+    Returns a list of prompt strings.
+    """
+    if not creative_prompt_text or not creative_prompt_text.strip():
+        return []
+    
+    prompts = []
+    text = creative_prompt_text.strip()
+    
+    # Split by newlines first
+    lines = text.split('\n')
+    
+    # Process each line
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        
+        # Check if line contains multiple numbered prompts (e.g., "1. prompt 2. prompt")
+        # Split by pattern: space, number, period, space
+        # This regex finds " 2. " or " 3. " etc. in the middle of a line
+        numbered_splits = re.split(r'\s+(\d+)\.\s+', line)
+        
+        if len(numbered_splits) > 1:
+            # Line contains multiple numbered prompts
+            # numbered_splits will be: ['first part', '2', 'second prompt', '3', 'third prompt', ...]
+            # Handle the first part (might start with "1. " or just be text)
+            first_part = numbered_splits[0].strip()
+            if first_part:
+                # Check if it starts with "1. "
+                first_match = re.match(r'^1\.\s*(.+)$', first_part)
+                if first_match:
+                    prompts.append(first_match.group(1).strip())
+                else:
+                    # No "1. " prefix, just use the text as-is
+                    prompts.append(first_part)
+            
+            # Handle the rest (pairs of number and prompt)
+            for i in range(1, len(numbered_splits), 2):
+                if i + 1 < len(numbered_splits):
+                    prompt_text = numbered_splits[i + 1].strip()
+                    if prompt_text:
+                        prompts.append(prompt_text)
+        else:
+            # Single prompt on this line
+            # Match pattern: number followed by period and space, then the prompt
+            # Examples: "1. prompt text", "2. prompt text", etc.
+            match = re.match(r'^\d+\.\s*(.+)$', line)
+            if match:
+                prompt_text = match.group(1).strip()
+                if prompt_text:
+                    prompts.append(prompt_text)
+            else:
+                # If line doesn't match numbered format but has content, include it
+                # This allows for flexibility in input format
+                if line and not line.startswith('#'):  # Ignore comment lines
+                    prompts.append(line)
+    
+    return prompts
+
+
+def build_ai_image_prompt(material_spec: Dict, client_context: str = "", parsed_prompts: Optional[List[str]] = None, prompt_index: int = 0) -> str:
+    """Create a descriptive prompt for the AI image generator.
+    
+    If parsed_prompts are provided, use them directly. Otherwise, generate from material requirements.
+    """
+    # If we have parsed prompts from user input, use those
+    if parsed_prompts and prompt_index < len(parsed_prompts):
+        return parsed_prompts[prompt_index]
+    
+    # Fallback to generating prompt from material spec
     title = material_spec.get("title", "Marketing visual")
     description = material_spec.get("description", "")
     requirements = material_spec.get("content_requirements", {})
@@ -601,6 +693,7 @@ def trigger_generation_node(state: MaterialsDecisionState) -> Command:
     
     generation_queue = state.get("generation_queue", [])
     client_context = state.get("client_context", "")
+    user_prompt = state.get("user_prompt", "")  # This contains the creative_prompt_text from Streamlit
     
     if not generation_queue:
         return Command(update={"status": "no_materials_to_generate"})
@@ -613,10 +706,11 @@ def trigger_generation_node(state: MaterialsDecisionState) -> Command:
     generation_status = "skipped"
 
     try:
-        # Pass both queue and client_context
+        # Pass queue, client_context, and creative_prompt_text
         payload = {
             "generation_queue": generation_queue,
-            "client_context": client_context
+            "client_context": client_context,
+            "creative_prompt_text": user_prompt  # Pass the creative prompt text for parsing
         }
         result = trigger_content_generation.invoke(json.dumps(payload))
         result_data = json.loads(result)

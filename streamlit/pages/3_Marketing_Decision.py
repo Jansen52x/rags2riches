@@ -227,10 +227,11 @@ with st.sidebar:
         help="Type of meeting this material is for"
     )
     
-    creative_prompt = st.text_input(
-        "Creative prompt (optional)",
+    creative_prompt = st.text_area(
+        "AI Image Prompts (optional)",
         value="",
-        help="Extra guidance for image/video style, e.g. 'cafe theme, warm tones, natural light'"
+        help="Enter numbered prompts for AI image generation, one per line. Example:\n1. modern technology office with diverse team collaborating around a conference table, professional corporate environment, natural lighting, high quality\n2. futuristic digital transformation concept with abstract technology network, glowing connections, blue and purple colors, professional business style, 3D illustration",
+        height=150
     )
     
     st.header("Verified Claims Input")

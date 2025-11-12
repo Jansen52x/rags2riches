@@ -410,12 +410,12 @@ class ContentGenerator:
         img = Image.new('RGB', (width, height), color='#2E86AB')
         draw = ImageDraw.Draw(img)
         
-        # Try to use a nice font, fall back to default if not available
+        # Try to use a nice font, fall back to default if not available (increased size)
         try:
-            font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 60)
+            font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 90)
         except:
             try:
-                font = ImageFont.truetype("arial.ttf", 60)
+                font = ImageFont.truetype("arial.ttf", 90)
             except:
                 font = ImageFont.load_default()
         

@@ -101,10 +101,10 @@ class AnimatedVideoGenerator:
             img = Image.new('RGB', (self.width, self.height), color='#1a1a2e')
             draw = ImageDraw.Draw(img)
             
-            # Load font
+            # Load font (increased sizes for better readability)
             try:
-                title_font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 80)
-                subtitle_font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 40)
+                title_font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 120)
+                subtitle_font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 60)
             except:
                 title_font = ImageFont.load_default()
                 subtitle_font = ImageFont.load_default()
@@ -179,10 +179,10 @@ class AnimatedVideoGenerator:
             img = Image.new('RGB', (self.width, self.height), color='#ffffff')
             draw = ImageDraw.Draw(img)
             
-            # Draw title
+            # Draw title (increased font sizes)
             try:
-                title_font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 60)
-                label_font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 30)
+                title_font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 90)
+                label_font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 45)
             except:
                 title_font = ImageFont.load_default()
                 label_font = ImageFont.load_default()
@@ -262,11 +262,11 @@ class AnimatedVideoGenerator:
             img = Image.new('RGB', (self.width, self.height), color='#f5f5f5')
             draw = ImageDraw.Draw(img)
             
-            # Title
+            # Title (increased font sizes)
             try:
-                title_font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 60)
-                header_font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 40)
-                item_font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 28)
+                title_font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 90)
+                header_font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 60)
+                item_font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 42)
             except:
                 title_font = ImageFont.load_default()
                 header_font = ImageFont.load_default()
@@ -343,10 +343,10 @@ class AnimatedVideoGenerator:
             img = Image.new('RGB', (self.width, self.height), color='#ffffff')
             draw = ImageDraw.Draw(img)
             
-            # Title
+            # Title (increased font sizes)
             try:
-                title_font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 60)
-                label_font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 28)
+                title_font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 90)
+                label_font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 42)
             except:
                 title_font = ImageFont.load_default()
                 label_font = ImageFont.load_default()
@@ -426,11 +426,11 @@ class AnimatedVideoGenerator:
             img = Image.new('RGB', (self.width, self.height), color='#ffffff')
             draw = ImageDraw.Draw(img)
             
-            # Title
+            # Title (increased font sizes)
             try:
-                title_font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 60)
-                label_font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 32)
-                axis_font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 36)
+                title_font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 90)
+                label_font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 48)
+                axis_font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 54)
             except:
                 title_font = ImageFont.load_default()
                 label_font = ImageFont.load_default()
@@ -499,7 +499,7 @@ class AnimatedVideoGenerator:
             draw = ImageDraw.Draw(img)
             
             try:
-                font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 60)
+                font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 90)
             except:
                 font = ImageFont.load_default()
             

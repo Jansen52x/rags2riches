@@ -291,6 +291,16 @@ if __name__ == "__main__":
     # Create agent
     agent = create_content_generation_agent()
 
+    # Generate and display Mermaid workflow diagram (optional)
+    try:
+        from ..workflow_visualizer import get_workflow_mermaid_diagram
+        print("\n🎨 Generating workflow diagram...")
+        mermaid_code = get_workflow_mermaid_diagram(
+            agent=agent,
+            output_file="content_generation_workflow.mmd"
+        )
+    except ImportError:
+        print("\n⚠️  Workflow visualizer not available")
     
     # Example input (this would come from your RAG pipeline)
     input_state = {
